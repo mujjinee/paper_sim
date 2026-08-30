@@ -94,10 +94,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
-
+import os
 #BASE = r"D:\marco\AIBM\PaperModel\.claude\skills\paper-agent"
 BASE = r"D:\03_JiWon\JiWonProject"
+#BASE1 = r"."
 
+#BASE1= os.getcwd()
 DATA_PATH = os.path.join(BASE, "data", "merged_for_simulation.csv")
 
 OUTPUT_DIR = os.path.join(BASE, "results", "simulation_output")
