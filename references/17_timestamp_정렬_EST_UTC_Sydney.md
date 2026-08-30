@@ -114,3 +114,52 @@ da_lmp_prices.csv (EST) + 5시간 = UTC                                   (times
 | `build_merged_for_simulation.py` | EST→UTC 보정 + Sydney local_date/local_hour 열 생성이 반영된 메인 병합 스크립트 |
 | `check_price_timezone_impact.py` | EST→UTC 보정 전/후 optimality gap 비교 |
 | `sydney_local_block_experiment.py` | UTC 0~11시 vs Sydney 9~20시 낮 시간대 선택 전/후 AR·MLR 성능 비교 |
+
+
+
+###  추가로 진행된 것
+
+ 세 가지 검증 결과 모두 완전히 일치합니다.
+
+1. da_lmp_prices_extended.csv ↔ da_lmp_prices_extended_full.csv
+항목	결과
+extended 구간	2012-11-01 ~ 2014-04-30 (13,104행)
+extended_full 구간	2012-04-01 ~ 2014-04-30 (18,240행, 앞으로 더 확장됨)
+공통 timestamp	13,104개 (extended 전체가 그대로 포함됨)
+DA_LMP 값 불일치	0건
+old에만 있는 timestamp	0개
+중복 timestamp	0개(둘 다)
+2. rt_lmp_prices_extended.csv ↔ rt_lmp_prices_extended_full.csv
+항목	결과
+extended 구간	2012-10-31 ~ 2014-04-30 (13,128행)
+extended_full 구간	2012-04-01 ~ 2014-04-30 (18,240행)
+공통 timestamp	13,128개 (전체 포함됨)
+RT_LMP 값 불일치	0건
+old에만 있는 timestamp	0개
+extended_full 내부 시간 갭	DA/RT 둘 다 0건 (완전 연속)
+→ 두 확장 파일 모두 기존 _extended 값을 그대로 유지하면서 앞쪽(2012-04-01까지)으로만 넓어졌고, 내부에 결측/중복도 없습니다.
+
+3. merged_for_simulation_z01 - 복사본.csv ↔ merged_for_simulation_z01.csv
+항목	결과
+복사본(old)	2012-11-01 05:00 ~ 2014-04-30 23:00 (13,099행)
+새 파일(new)	2012-11-01 00:00 ~ 2014-04-30 23:00 (13,104행)
+공통 timestamp	13,099개 (복사본 전체가 그대로 포함됨)
+new에만 있는 timestamp	5개 — 정확히 2012-11-01 00:00~04:00 (아래 설명)
+21개 열 전체 값 불일치	0건 (solar_power, da_price, rt_price, 기상 12변수, dssrd/dtsr, local_timestamp/date/hour 전부 포함)
+앞쪽 5시간 차이의 이유
+예전엔 da/rt_lmp_prices_extended.csv(2012-11-01부터)를 썼는데, EST→UTC로 +5시간 밀면서 맨 앞 5시간(2012-11-01 00:00~04:00)의 가격이 없어서 그 5시간을 드롭했었습니다. 이번엔 _full 버전(2012-04-01부터, 훨씬 이전 구간까지 커버)을 써서 그 5시간의 가격도 확보됐고, 그래서 새 파일이 정확히 그 5시간만큼 더 많습니다 — 이건 오류가 아니라 의도된 개선입니다.
+
+결론: 두 가격 파일 확장과 merged_for_simulation_z01.csv 재생성 모두 기존 데이터를 훼손 없이 그대로 포함하면서 구간만 확장된 것으로 확인됐습니다.
+
+
+### 최종 final data
+변경 내용
+경로 기준: BASE = os.path.dirname(os.path.abspath(__file__)) → BASE = os.getcwd()
+__file__이 없는 Jupyter/Colab 셀 환경에서도 그대로 동작하도록 (이 .py 파일 자체를 그대로 노트북에 붙여넣어도 됨)
+단, 실행 시 현재 작업 디렉터리가 data/ 폴더가 있는 프로젝트 루트여야 함 — docstring에 명시해둠
+가격 파일 교체: da/rt_lmp_prices_extended.csv → da/rt_lmp_prices_extended_final.csv (predictors15.csv와 동일 구간까지 확장된 버전)
+구간 확장: START_DATE/END_DATE를 predictors15.csv 전체 구간(2012-04-01 ~ 2014-07-01 00:00:00)에 맞춤
+실행 결과 (python build_merged_for_simulation.py)
+Zone	행 수	기간
+z01/z02/z03	19,700	2012-04-01 05:00 ~ 2014-07-01 00:00
+EST→UTC 보정으로 맨 앞 4시간만 드롭되고, predictors15.csv의 전체 구간이 이제 거의 다 커버됩니다.

@@ -7,9 +7,16 @@ data/ 폴더에 있는 (이미 추출된) 원본들을 읽어서 시뮬레이션
 따로 만들지 않고 메모리 상에서 바로 병합한다.
 
 입력 (data/):
-  data/da_lmp_prices_extended.csv   - MISO Day-Ahead LMP, 2012-11-01~2014-04-30 (TIMESTAMP, DA_LMP)
-  data/rt_lmp_prices_extended.csv   - MISO Real-Time LMP,  2012-11-01~2014-04-30 (TIMESTAMP, RT_LMP)
-  data/predictors15.csv             - GEFCom2014 Solar Task15 원본 (ZONEID, TIMESTAMP, VAR.., POWER)
+  data/da_lmp_prices_extended_final.csv   - MISO Day-Ahead LMP, 2012-04-01~2014-07-31 (TIMESTAMP, DA_LMP)
+  data/rt_lmp_prices_extended_final.csv   - MISO Real-Time LMP,  2012-04-01~2014-07-31 (TIMESTAMP, RT_LMP)
+  data/predictors15.csv                   - GEFCom2014 Solar Task15 원본 (ZONEID, TIMESTAMP, VAR.., POWER)
+  (DA/RT 모두 predictors15.csv의 전체 구간(2012-04-01~2014-07-01)을 갭 없이 커버함)
+
+경로 기준:
+  BASE는 __file__이 아니라 os.getcwd()(현재 작업 디렉터리)로 잡는다. Jupyter/Colab
+  에서 셀 단위로 실행해도(그 환경엔 __file__이 없음) 그대로 동작하도록 하기 위함.
+  따라서 이 스크립트는 반드시 data/ 폴더가 있는 프로젝트 루트에서 실행해야 한다
+  (다른 위치에서 실행한다면 실행 전에 해당 디렉터리로 os.chdir 할 것).
 
 출력 (ZONEID 1/2/3 별로 각각):
   merged_for_simulation_z01.csv   (프로젝트 루트)
@@ -58,11 +65,15 @@ Usage:
 import os
 import pandas as pd
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# __file__ 대신 os.getcwd() 를 BASE로 쓴다 (Jupyter/Colab 등 __file__이 없는
+# 환경에서도 동작하도록). 이 스크립트를 실행하는 현재 작업 디렉터리가
+# data/ 폴더가 있는 프로젝트 루트여야 한다.
+BASE = os.getcwd()
 DATA = os.path.join(BASE, "data")
 
-DA_PATH = os.path.join(DATA, "da_lmp_prices_extended.csv")
-RT_PATH = os.path.join(DATA, "rt_lmp_prices_extended.csv")
+DA_PATH = os.path.join(DATA, "da_lmp_prices_extended_final.csv")
+RT_PATH = os.path.join(DATA, "rt_lmp_prices_extended_final.csv")
+
 PREDICTORS_PATH = os.path.join(DATA, "predictors15.csv")
 
 
@@ -70,12 +81,12 @@ def out_path(zone_id):
     return os.path.join(BASE, f"merged_for_simulation_z{zone_id:02d}.csv")
 
 
-# 전체 데이터 구간 = DA/RT LMP 가격 데이터(_extended)가 존재하는 구간과 동일하게 맞춘다.
-# da/rt 확장 파일 겹치는 구간: 2012-11-01 ~ 2014-04-30 (갭/중복 없음, 검증 완료).
-# Zone 1/2/3 solar predictors 모두 2012-04-01~2014-07-01까지 있어 이 구간을 전부 커버함.
+# 전체 데이터 구간 = predictors15.csv 의 구간과 동일하게 맞춘다.
+# da/rt _final 파일이 이제 predictors15.csv 구간(2012-04-01~2014-07-01)을
+# EST->UTC 보정 후에도 전부 커버하도록 확장되었음 (2012-04-01~2014-07-31, 갭 없음).
 ZONE_IDS = [1, 2, 3]
-START_DATE = "2012-11-01"
-END_DATE = "2014-04-30 23:00:00"
+START_DATE = "2012-04-01"
+END_DATE = "2014-07-01 00:00:00"
 
 LOCAL_TIMEZONE = "Australia/Sydney"   # 논문이 쓰는 낮 시간대(9~21시) 기준 시간대
 
@@ -144,7 +155,7 @@ def load_solar_weather(df_all, zone_id):
 
 
 # ============================================================
-# 2. DA / RT 가격 : data/da_lmp_prices_extended.csv, data/rt_lmp_prices_extended.csv
+# 2. DA / RT 가격 : data/da_lmp_prices_extended_final.csv, data/rt_lmp_prices_extended_final.csv
 #    (extract_prices_data.py 결과물을 그대로 읽음)
 # ============================================================
 EST_TO_UTC = pd.Timedelta(hours=5)  # MISO는 고정 EST(UTC-5) 발표, DST 미적용
@@ -181,9 +192,9 @@ def main():
         # RT price 내부 결측 -> forward fill (마지막 날 누락 등 예외적인 경우 대비)
         merged["rt_price"] = merged["rt_price"].ffill()
 
-        # 가격을 EST->UTC로 +5시간 이동시켰기 때문에, 태양광 구간의 맨 앞 5시간은
-        # 대응하는 가격이 없음(과거로 더 당길 원본 EST 데이터가 없음). forward-fill로
-        # 채우지 않고 명시적으로 제거한다.
+        # 가격을 EST->UTC로 +5시간 이동시켰기 때문에, 태양광 구간의 맨 앞 몇 시간은
+        # 대응하는 가격이 없을 수 있음(과거로 더 당길 원본 EST 데이터가 없음).
+        # forward-fill로 채우지 않고 명시적으로 제거한다.
         before = len(merged)
         merged = merged.dropna(subset=["da_price", "rt_price"]).reset_index(drop=True)
         dropped = before - len(merged)

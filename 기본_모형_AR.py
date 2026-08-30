@@ -164,23 +164,20 @@ for hour in range(HOURS_PER_DAY):                       # 시간대 0부터 11�
 
     X_sparse = sparse.csr_matrix(ar_design_matrix)          # 입력행렬을 희소행렬 형태로 변환 (linprog 입력용)
     identity_matrix = sparse.eye(n_ar_rows, format="csr")     # 300x300 단위행렬 (절대값 처리용 보조변수 계수)
-    zero_block = sparse.csr_matrix((n_ar_rows, n_ar_rows))     # 300x300 영행렬 (범위제약 블록에서 u 열을 안 쓰려고)
 
-    # ---- 절대오차 |y - X@beta| 를 u 라는 보조변수로 표현하기 위한 제약 4묶음 ----
+    # ---- 절대오차 |y - X@beta| 를 u 라는 보조변수로 표현하기 위한 제약 2묶음
+    #      (2026-08-31 부로 bounded LAD 대신 일반 LAD 로 교체 - 논문 Eq.(5)에는
+    #      학습 중 [0,1] 강제 제약이 없으므로, 그 조건을 뺀 원문 그대로의 LAD) ----
     constraint_block_1 = sparse.hstack([X_sparse, -identity_matrix])   #  X@beta - u <= y
     constraint_block_2 = sparse.hstack([-X_sparse, -identity_matrix])  # -X@beta - u <= -y  (합치면 u >= |X@beta-y|)
-    constraint_block_3 = sparse.hstack([X_sparse, zero_block])         #  X@beta <= 1  (예측값 상한 제약)
-    constraint_block_4 = sparse.hstack([-X_sparse, zero_block])        # -X@beta <= 0  (예측값 하한 제약, 즉 X@beta>=0)
 
-    all_constraints = sparse.vstack([                        # 위 4묶음을 위아래로 합쳐 하나의 제약행렬로 만듦
-        constraint_block_1, constraint_block_2, constraint_block_3, constraint_block_4
+    all_constraints = sparse.vstack([                        # 위 2묶음을 위아래로 합쳐 하나의 제약행렬로 만듦
+        constraint_block_1, constraint_block_2
     ], format="csr")
 
     constraint_limits = np.concatenate([                     # 각 제약식의 우변(<=) 값들을 순서대로 이어붙임
         y_this_hour,                 # 첫 묶음의 우변 = y
         -y_this_hour,                # 두번째 묶음의 우변 = -y
-        np.ones(n_ar_rows),          # 세번째 묶음의 우변 = 1 (예측값 <= 1)
-        np.zeros(n_ar_rows),         # 네번째 묶음의 우변 = 0 (예측값 >= 0)
     ])
 
     objective_coefficients = np.concatenate([                # 목적함수 계수: beta 에는 0, u 에는 1/300
@@ -296,7 +293,7 @@ optimality_gap_percent = 100.0 * (sum_of_oracle_profit - sum_of_realized_profit)
 # =====================================================================
 
 print()
-print("=== 기본 모형 AR (bounded LAD) - 블록9 결과 ===")
+print("=== 기본 모형 AR (일반 LAD, 2026-08-31부로 bounded LAD 대체) - 블록9 결과 ===")
 print(f"nRMSE          = {nrmse_percent:.6f} %   (논문: {PAPER_NRMSE:.2f} %)")
 print(f"optimality gap = {optimality_gap_percent:.6f} %   (논문: {PAPER_GAP:.2f} %)")
 print()

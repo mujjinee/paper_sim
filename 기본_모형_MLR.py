@@ -149,22 +149,19 @@ for i in range(n_test_obs):                                   # 1200개 테스�
 
 X_sparse = sparse.csr_matrix(X_train)                     # 입력행렬을 희소행렬 형태로 변환
 identity_matrix = sparse.eye(n_train_obs, format="csr")      # 3600x3600 단위행렬 (절대값 처리용 보조변수 계수)
-zero_block = sparse.csr_matrix((n_train_obs, n_train_obs))    # 3600x3600 영행렬 (범위제약 블록용)
 
+# ---- 2026-08-31 부로 bounded LAD 대신 일반 LAD 로 교체 - 논문 Eq.(8)에는
+#      학습 중 [0,1] 강제 제약이 없으므로, 그 조건을 뺀 원문 그대로의 LAD ----
 constraint_block_1 = sparse.hstack([X_sparse, -identity_matrix])   #  X@beta - u <= y
 constraint_block_2 = sparse.hstack([-X_sparse, -identity_matrix])  # -X@beta - u <= -y
-constraint_block_3 = sparse.hstack([X_sparse, zero_block])         #  X@beta <= 1 (예측값 상한)
-constraint_block_4 = sparse.hstack([-X_sparse, zero_block])        # -X@beta <= 0 (예측값 하한, X@beta>=0)
 
-all_constraints = sparse.vstack([                           # 4묶음을 위아래로 합쳐 하나의 제약행렬로 만듦
-    constraint_block_1, constraint_block_2, constraint_block_3, constraint_block_4
+all_constraints = sparse.vstack([                           # 2묶음을 위아래로 합쳐 하나의 제약행렬로 만듦
+    constraint_block_1, constraint_block_2
 ], format="csr")
 
 constraint_limits = np.concatenate([                        # 각 제약식의 우변(<=) 값들을 순서대로 이어붙임
     train_solar,                  # 첫 묶음의 우변 = y (실제 발전량)
     -train_solar,                 # 두번째 묶음의 우변 = -y
-    np.ones(n_train_obs),         # 세번째 묶음의 우변 = 1
-    np.zeros(n_train_obs),        # 네번째 묶음의 우변 = 0
 ])
 
 objective_coefficients = np.concatenate([                   # 목적함수 계수: beta 에는 0, u 에는 1/3600
@@ -254,7 +251,7 @@ optimality_gap_percent = 100.0 * (sum_of_oracle_profit - sum_of_realized_profit)
 # =====================================================================
 
 print()
-print("=== 기본 모형 MLR (bounded LAD) - 블록9 결과 ===")
+print("=== 기본 모형 MLR (일반 LAD, 2026-08-31부로 bounded LAD 대체) - 블록9 결과 ===")
 print(f"nRMSE          = {nrmse_percent:.6f} %   (논문: {PAPER_NRMSE:.2f} %)")
 print(f"optimality gap = {optimality_gap_percent:.6f} %   (논문: {PAPER_GAP:.2f} %)")
 print()
