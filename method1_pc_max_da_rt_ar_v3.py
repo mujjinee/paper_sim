@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 
 # =====================================================================
-# temp_method1_rate09_fig3_fig5.py
+# method1_pc_max_da_rt_ar_v3.py
 #
-# 목적: 방법 1 (PC = rate*max(DA, RT), 논문AR_정리2.md 6.4절)의 rate=0.9
-#       조건에서 Fig.3과 Fig.5를 각각 재현해서 그린다.
+# method1_pc_max_da_rt_ar_v2.py 와 동일한 계산(전체 그리드 스윕 + Best
+# rate 자동 탐색 + Fig.3/Fig.5 계산)이지만, Fig.3 그리기만 좌우 2분할
+# 대신 dual y축(nRMSE 왼쪽, Gap 오른쪽) 하나로 바꿨다 - model_proposed_ar_
+# profit_change_v3.py / method1_pc_max_da_rt_mlr_v2.py의 Fig.6과 동일한
+# 형태. Fig.5는 기존처럼 좌우 2분할(AR+제안모형) 그대로 유지.
 #
-#   - Fig.3: rate=0.9 고정, W1/W2 = AR, 1/20, 1/10, 1/5, 1/2, 1/1, 2/1,
-#            5/1, 10/1, 20/1, 1/0  (논문 Fig.3과 동일한 11개 지점)
-#   - Fig.5: W1/W2=1/1 고정(논문 Fig.5와 동일 조건), penalty rate를
-#            0%~100%(10%씩) 스윕. rate=0.9 지점은 세로 점선으로 강조.
-#
-# 근거: MILP/오라클 계산 로직은 method1_pc_max_da_rt.py 6절을 그대로
-#       재사용(공식만 동일, W1/W2·rate 조합만 재구성).
+#   1. 전체 그리드(PENALTY_RATES x W_RATIOS) 스윕 -> CSV 저장 -> Best 탐색
+#   2. Best rate 고정, Fig.3용 W1/W2 10개점 스윕 (그리드와 겹치는 5개는 재사용)
+#   3. W1=W2=1 고정, Fig.5용 rate 16개점(0~150%) 스윕 (그리드와 겹치는
+#      8개는 재사용). Best rate 지점은 세로 점선으로 강조.
+#   4. Fig.3(dual y축) / Fig.5(좌우 2분할) 그리기 (논문값과 비교)
 # =====================================================================
 
 import os
@@ -63,24 +64,34 @@ CAPACITY_MW = 30.0
 DURATION_HOURS = 1.0
 scale = CAPACITY_MW * DURATION_HOURS
 
-# --- Fig.3 설정: rate 고정, W1/W2 11개점 스윕 ---
-FIG3_RATE = 0.9
+# --- 전체 그리드 설정 (method1_pc_max_da_rt_ar.py 그대로) ---
+GRID_W_RATIOS = [(1, 20), (1, 10), (1, 5), (1, 1), (1, 0)]
+GRID_PENALTY_RATES = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5]
+
+PAPER_AR_NRMSE = 34.76
+PAPER_AR_GAP = 15.04
+GRID_PAPER_NRMSE = [34.89, 35.14, 36.28, 44.95, 50.07]
+GRID_PAPER_GAP = [13.91, 13.42, 12.71, 11.44, 11.36]
+
+# --- Fig.3 설정: best rate 고정, W1/W2 10개점 스윕 (논문 표3/Fig.3 전체) ---
 FIG3_LABELS = ["AR", "1/20", "1/10", "1/5", "1/2", "1/1", "2/1", "5/1", "10/1", "20/1", "1/0"]
 FIG3_W_RATIOS = [(1, 20), (1, 10), (1, 5), (1, 2), (1, 1), (2, 1), (5, 1), (10, 1), (20, 1), (1, 0)]
 FIG3_PAPER_NRMSE = [34.76, 34.89, 35.14, 36.28, 41.09, 44.95, 46.11, 48.27, 49.21, 49.61, 50.07]
 FIG3_PAPER_GAP   = [15.04, 13.91, 13.42, 12.71, 11.88, 11.44, 11.38, 11.38, 11.36, 11.36, 11.36]
 
-# --- Fig.5 설정: W1/W2 고정, penalty rate 0~100% 스윕 ---
+# --- Fig.5 설정: W1/W2 고정, penalty rate 0~150% 스윕 (그리드 최대값 1.5까지
+#     범위를 넉넉히 잡아서, best rate가 100%를 넘게 나오더라도 항상 x축
+#     안에 들어오도록 함 - method1_pc_max_da_rt_mlr_v2.py의 Fig.8과 동일한 안전장치) ---
 FIG5_W1, FIG5_W2 = 1, 1
-FIG5_RATES = [round(0.1 * i, 1) for i in range(11)]   # 0.0, 0.1, ..., 1.0
-FIG5_HIGHLIGHT_RATE = 0.9
+FIG5_RATES = [round(0.1 * i, 1) for i in range(16)]   # 0.0, 0.1, ..., 1.5
 
-# 논문 Fig.5를 육안으로 읽은 참고값(50%만 Table 3 실측치, 나머지는 근사치)
-# -- fig5_그리기.py 와 동일한 값을 그대로 사용
-FIG5_PAPER_AR_NRMSE   = [34.76] * 11
-FIG5_PAPER_AR_GAP     = [9, 11, 12, 13, 14, 15.04, 16, 18, 19, 20, 22]
-FIG5_PAPER_PROP_NRMSE = [46, 34, 35, 36, 40, 44.45, 50, 55, 61, 64, 67]
-FIG5_PAPER_PROP_GAP   = [8, 10, 11, 11, 11, 11.44, 11, 11.5, 11.5, 11.5, 11.5]
+# 논문 Fig.5를 육안으로 읽은 참고값(50%만 Table 3 실측치, 나머지는 근사치).
+# 논문 x축은 0~100%까지만 있어서 11개만 채우고, 110%~150%는 None으로 비워
+# 그 구간만 논문 곡선이 자연스럽게 끊기게 한다.
+FIG5_PAPER_AR_NRMSE   = [34.76] * 11 + [None] * 5
+FIG5_PAPER_AR_GAP     = [9, 11, 12, 13, 14, 15.04, 16, 18, 19, 20, 22] + [None] * 5
+FIG5_PAPER_PROP_NRMSE = [46, 34, 35, 36, 40, 44.45, 50, 55, 61, 64, 67] + [None] * 5
+FIG5_PAPER_PROP_GAP   = [8, 10, 11, 11, 11, 11.44, 11, 11.5, 11.5, 11.5, 11.5] + [None] * 5
 
 
 # =====================================================================
@@ -186,7 +197,7 @@ def compute_gap(pred_flat, penalty_rate):
 
 
 # =====================================================================
-# 5. 기본 AR (penalty rate와 무관 — 회귀 예측만으로 결정됨)
+# 5. 기본 AR (penalty rate와 무관 — 회귀 예측만으로 결정됨, 한 번만 계산)
 # =====================================================================
 ar_coefficients = np.zeros((HOURS_PER_DAY, n_features))
 for h in range(HOURS_PER_DAY):
@@ -214,10 +225,8 @@ ar_nrmse = 100 * ar_rmse / np.mean(actual_flat)
 
 
 # =====================================================================
-# 6. (penalty_rate, W1, W2) 하나를 받아 제안모형 MILP를 풀고 nRMSE/Gap을
-#    반환하는 함수. method1_pc_max_da_rt.py 6절 로직을 그대로 재사용해서
-#    Fig.3(rate 고정, W1/W2 스윕)와 Fig.5(W1/W2 고정, rate 스윕) 양쪽에서
-#    호출한다.
+# 6. (penalty_rate, W1, W2) 하나를 받아 제안모형 MILP를 풀고 (nrmse, gap)을
+#    반환하는 함수. method1_pc_max_da_rt_ar.py 6절 로직을 그대로 함수화.
 # =====================================================================
 def run_proposed_model(penalty_rate, W1, W2):
     coefficients_by_hour = np.zeros((HOURS_PER_DAY, n_features))
@@ -317,26 +326,123 @@ def run_proposed_model(penalty_rate, W1, W2):
 
 
 # =====================================================================
-# 7. Fig.3 데이터 생성 — rate=0.9 고정, W1/W2 11개점 스윕
+# 7. 캐시가 달린 조회 함수 - (rate, W1, W2) 조합을 이미 풀었으면 재사용
+# =====================================================================
+solved_cache = {}   # {(rate, W1, W2): (nrmse, gap)}
+
+
+def get_proposed_result(penalty_rate, W1, W2):
+    key = (penalty_rate, W1, W2)
+    if key not in solved_cache:
+        solved_cache[key] = run_proposed_model(penalty_rate, W1, W2)
+    return solved_cache[key]
+
+
+# =====================================================================
+# 8. 전체 그리드 스윕 - rate 10개 x W1/W2 5개 = 50조합
+#    (method1_pc_max_da_rt_ar.py 6절과 동일, 결과는 캐시에 저장돼서
+#     Fig.3/Fig.5에서 겹치는 조합은 다시 풀지 않는다)
+# =====================================================================
+all_results = []
+
+for penalty_rate in GRID_PENALTY_RATES:
+    print(f"\n{'='*60}")
+    print(f"  rate = {penalty_rate}  (PC = rate*max(DA, RT))")
+    print(f"{'='*60}")
+
+    results_c = []
+    for widx, (W1, W2) in enumerate(GRID_W_RATIOS):
+        nrmse, gap = get_proposed_result(penalty_rate, W1, W2)
+        label = f"{W1}/{W2}"
+        results_c.append((label, W1, W2, nrmse, gap))
+        print(f"  {label}: nRMSE={nrmse:.2f}%, Gap={gap:.2f}% "
+              f"(paper: nRMSE={GRID_PAPER_NRMSE[widx]:.2f}%, Gap={GRID_PAPER_GAP[widx]:.2f}%)")
+
+    all_results.append((penalty_rate, results_c))
+
+
+# =====================================================================
+# 9. 그리드 결과 표 + CSV 저장
+# =====================================================================
+print()
+print("=" * 110)
+print(f"{'rate':>5} {'Label':>6} {'W1':>4} {'W2':>4} {'nRMSE':>10} {'Gap':>10} {'Paper nRMSE':>12} {'Paper Gap':>12} {'d nRMSE':>10} {'d Gap':>10}")
+print("-" * 110)
+
+for penalty_rate, results_c in all_results:
+    for label, W1, W2, nrmse, gap in results_c:
+        idx = GRID_W_RATIOS.index((W1, W2))
+        print(f"{penalty_rate:>5} {label:>6} {W1:>4} {W2:>4} {nrmse:>9.2f}% {gap:>9.2f}% "
+              f"{GRID_PAPER_NRMSE[idx]:>11.2f}% {GRID_PAPER_GAP[idx]:>11.2f}% "
+              f"{nrmse-GRID_PAPER_NRMSE[idx]:>+9.2f}%p {gap-GRID_PAPER_GAP[idx]:>+9.2f}%p")
+print("=" * 110)
+
+print(f"\nAR baseline:")
+for penalty_rate in GRID_PENALTY_RATES:
+    arg = compute_gap(ar_pred_flat, penalty_rate)
+    print(f"  rate={penalty_rate}: nRMSE={ar_nrmse:.2f}%, Gap={arg:.2f}% "
+          f"(paper: nRMSE={PAPER_AR_NRMSE:.2f}%, Gap={PAPER_AR_GAP:.2f}%)")
+
+grid_out_dir = os.path.join(BASE_DIR, "results", "simulation_output")
+os.makedirs(grid_out_dir, exist_ok=True)
+grid_csv_path = os.path.join(grid_out_dir, "fig3_method1_pc_max_da_rt.csv")
+with open(grid_csv_path, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["rate", "Label", "W1", "W2", "nRMSE", "Gap",
+                      "Paper_nRMSE", "Paper_Gap", "Delta_nRMSE", "Delta_Gap"])
+    for penalty_rate, results_c in all_results:
+        for label, W1, W2, nrmse, gap in results_c:
+            idx = GRID_W_RATIOS.index((W1, W2))
+            writer.writerow([penalty_rate, label, W1, W2, round(nrmse, 2), round(gap, 2),
+                             GRID_PAPER_NRMSE[idx], GRID_PAPER_GAP[idx],
+                             round(nrmse - GRID_PAPER_NRMSE[idx], 2), round(gap - GRID_PAPER_GAP[idx], 2)])
+print(f"\nsaved: {grid_csv_path}")
+
+
+# =====================================================================
+# 10. Best (rate, W1/W2) 자동 탐색 - |ΔnRMSE|+|ΔGap| 최소 조합
+# =====================================================================
+best_total_err = np.inf
+best_combo = None
+for penalty_rate, results_c in all_results:
+    for label, W1, W2, nrmse, gap in results_c:
+        idx = GRID_W_RATIOS.index((W1, W2))
+        err = abs(nrmse - GRID_PAPER_NRMSE[idx]) + abs(gap - GRID_PAPER_GAP[idx])
+        if err < best_total_err:
+            best_total_err = err
+            best_combo = (penalty_rate, label, nrmse, gap, idx)
+
+BEST_RATE = best_combo[0]
+print(f"\nBest: rate={BEST_RATE}, W1/W2={best_combo[1]} "
+      f"(nRMSE={best_combo[2]:.2f}%, Gap={best_combo[3]:.2f}%, "
+      f"dnRMSE={best_combo[2]-GRID_PAPER_NRMSE[best_combo[4]]:+.2f}%p, "
+      f"dGap={best_combo[3]-GRID_PAPER_GAP[best_combo[4]]:+.2f}%p) "
+      f"-> Fig.3/Fig.5에서 이 rate를 그대로 씀")
+
+
+# =====================================================================
+# 11. Fig.3 데이터 생성 — rate=BEST_RATE 고정, W1/W2 10개점 스윕
+#     (그리드와 겹치는 5개 조합은 캐시에서 재사용)
 # =====================================================================
 print(f"\n{'=' * 60}")
-print(f"  Fig.3 데이터 생성 (rate={FIG3_RATE} 고정)")
+print(f"  Fig.3 데이터 생성 (rate={BEST_RATE} 고정 — 전체 그리드에서 자동 탐색된 최적값)")
 print(f"{'=' * 60}")
 
-fig3_ar_gap = compute_gap(ar_pred_flat, FIG3_RATE)
+fig3_ar_gap = compute_gap(ar_pred_flat, BEST_RATE)
 fig3_nrmse_list = [ar_nrmse]
 fig3_gap_list = [fig3_ar_gap]
 print(f"  AR: nRMSE={ar_nrmse:.2f}%, Gap={fig3_ar_gap:.2f}%")
 
 for (W1, W2) in FIG3_W_RATIOS:
-    nrmse, gap = run_proposed_model(FIG3_RATE, W1, W2)
+    nrmse, gap = get_proposed_result(BEST_RATE, W1, W2)
     fig3_nrmse_list.append(nrmse)
     fig3_gap_list.append(gap)
     print(f"  {W1}/{W2}: nRMSE={nrmse:.2f}%, Gap={gap:.2f}%")
 
 
 # =====================================================================
-# 8. Fig.5 데이터 생성 — W1/W2=1/1 고정, penalty rate 0~100% 스윕
+# 12. Fig.5 데이터 생성 — W1/W2=1/1 고정, penalty rate 0~150% 스윕
+#     (그리드와 겹치는 rate는 캐시에서 재사용)
 # =====================================================================
 print(f"\n{'=' * 60}")
 print(f"  Fig.5 데이터 생성 (W1/W2={FIG5_W1}/{FIG5_W2} 고정)")
@@ -352,7 +458,7 @@ for rate in FIG5_RATES:
     fig5_ar_nrmse_list.append(ar_nrmse)
     fig5_ar_gap_list.append(ar_gap_r)
 
-    prop_nrmse_r, prop_gap_r = run_proposed_model(rate, FIG5_W1, FIG5_W2)
+    prop_nrmse_r, prop_gap_r = get_proposed_result(rate, FIG5_W1, FIG5_W2)
     fig5_prop_nrmse_list.append(prop_nrmse_r)
     fig5_prop_gap_list.append(prop_gap_r)
 
@@ -361,12 +467,12 @@ for rate in FIG5_RATES:
 
 
 # =====================================================================
-# 9. 결과 CSV 저장
+# 13. Fig.3/Fig.5 결과 CSV 저장
 # =====================================================================
 out_dir = os.path.join(BASE_DIR, "results", "simulation_output")
 os.makedirs(out_dir, exist_ok=True)
 
-fig3_csv_path = os.path.join(out_dir, "temp_fig3_method1_rate09.csv")
+fig3_csv_path = os.path.join(out_dir, "fig3_method1_pc_max_da_rt_ar_v3.csv")
 with open(fig3_csv_path, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["Label", "nRMSE", "Gap", "Paper_nRMSE", "Paper_Gap"])
@@ -375,7 +481,7 @@ with open(fig3_csv_path, "w", newline="") as f:
         writer.writerow([label, round(nrmse, 2), round(gap, 2), p_nrmse, p_gap])
 print(f"\nsaved: {fig3_csv_path}")
 
-fig5_csv_path = os.path.join(out_dir, "temp_fig5_method1_rate09.csv")
+fig5_csv_path = os.path.join(out_dir, "fig5_method1_pc_max_da_rt_ar_v3.csv")
 with open(fig5_csv_path, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["Rate", "AR_nRMSE", "AR_Gap", "Proposed_nRMSE", "Proposed_Gap"])
@@ -386,53 +492,70 @@ print(f"saved: {fig5_csv_path}")
 
 
 # =====================================================================
-# 10. Fig.3 그리기 — nRMSE / Gap 나란히, 논문값과 비교
+# 14. Fig.3 그리기 — dual y축 (nRMSE 왼쪽, Gap 오른쪽) - 논문 원본과 동일한
+#     축 구성 (model_proposed_ar_profit_change_v3_fig3.png 와 같은 형태)
 # =====================================================================
+results_out_dir = os.path.join(BASE_DIR, "results")
+os.makedirs(results_out_dir, exist_ok=True)
+
 x3 = list(range(len(FIG3_LABELS)))
 
-fig3, (ax3_nrmse, ax3_gap) = plt.subplots(1, 2, figsize=(13, 5))
-fig3.suptitle(f"Fig.3 재현 — 방법1(PC=rate·max(DA,RT)), rate={FIG3_RATE}, W1/W2 스윕", fontsize=14)
+figure3, axis_left = plt.subplots(figsize=(10, 6))
+figure3.suptitle(f"Fig.3 재현 — 방법1(PC=rate·max(DA,RT)), rate={BEST_RATE}(자동탐색 최적값), W1/W2 스윕 (dual y축)", fontsize=13)
 
-ax3_nrmse.plot(x3, FIG3_PAPER_NRMSE, marker="o", color="#2a78d6", label="논문")
-ax3_nrmse.plot(x3, fig3_nrmse_list, marker="o", color="#eb6834", label="재현")
-ax3_nrmse.set_xticks(x3)
-ax3_nrmse.set_xticklabels(FIG3_LABELS)
-ax3_nrmse.set_xlabel("W1/W2")
-ax3_nrmse.set_ylabel("nRMSE (%)")
-ax3_nrmse.set_title("nRMSE 비교")
-ax3_nrmse.grid(True, alpha=0.3)
-ax3_nrmse.legend()
+axis_right = axis_left.twinx()
 
-ax3_gap.plot(x3, FIG3_PAPER_GAP, marker="o", color="#2a78d6", label="논문")
-ax3_gap.plot(x3, fig3_gap_list, marker="o", color="#eb6834", label="재현")
-ax3_gap.set_xticks(x3)
-ax3_gap.set_xticklabels(FIG3_LABELS)
-ax3_gap.set_xlabel("W1/W2")
-ax3_gap.set_ylabel("Optimality Gap (%)")
-ax3_gap.set_title("Optimality Gap 비교")
-ax3_gap.grid(True, alpha=0.3)
-ax3_gap.legend()
+line1 = axis_left.plot(x3, FIG3_PAPER_NRMSE, marker="o", color="#2a78d6",
+                        linestyle="-", label="논문 nRMSE")
+line2 = axis_left.plot(x3, fig3_nrmse_list, marker="o", color="#0b3d78",
+                        linestyle="-", label="재현 nRMSE")
 
-fig3.tight_layout()
-fig3_png_path = os.path.join(BASE_DIR, "results", "temp_fig3_method1_rate09.png")
-os.makedirs(os.path.dirname(fig3_png_path), exist_ok=True)
-fig3.savefig(fig3_png_path, dpi=150)
-print(f"saved: {fig3_png_path}")
+line3 = axis_right.plot(x3, FIG3_PAPER_GAP, marker="s", color="#eb9834",
+                         linestyle="--", label="논문 Gap")
+line4 = axis_right.plot(x3, fig3_gap_list, marker="s", color="#b34700",
+                         linestyle="--", label="재현 Gap")
+
+axis_left.set_xticks(x3)
+axis_left.set_xticklabels(FIG3_LABELS)
+axis_left.set_xlabel("W1/W2")
+axis_left.set_ylabel("nRMSE (%)", color="#0b3d78")
+axis_right.set_ylabel("Optimality Gap (%)", color="#b34700")
+axis_left.tick_params(axis="y", labelcolor="#0b3d78")
+axis_right.tick_params(axis="y", labelcolor="#b34700")
+axis_left.grid(True, alpha=0.3)
+
+all_lines = line1 + line2 + line3 + line4
+all_labels = [one_line.get_label() for one_line in all_lines]
+axis_left.legend(all_lines, all_labels, loc="upper left", fontsize=9)
+
+figure3.tight_layout()
+fig3_png_path = os.path.join(results_out_dir, "fig3_method1_pc_max_da_rt_ar_v3.png")
+figure3.savefig(fig3_png_path, dpi=150)
+print(f"\nsaved: {fig3_png_path}")
 
 
 # =====================================================================
-# 11. Fig.5 그리기 — nRMSE / Gap 나란히, 논문값과 비교
-#     rate=0.9 지점은 세로 점선으로 강조 표시
+# 15. Fig.5 그리기 — nRMSE / Gap 나란히, 논문값과 비교 (좌우 2분할 유지)
+#     BEST_RATE 지점은 세로 점선으로 강조 표시
 # =====================================================================
-x5_labels = [f"{int(r * 100)}%" for r in FIG5_RATES]
+def _to_nan(values):
+    return [np.nan if v is None else v for v in values]
+
+fig5_paper_ar_nrmse_arr = _to_nan(FIG5_PAPER_AR_NRMSE)
+fig5_paper_prop_nrmse_arr = _to_nan(FIG5_PAPER_PROP_NRMSE)
+fig5_paper_ar_gap_arr = _to_nan(FIG5_PAPER_AR_GAP)
+fig5_paper_prop_gap_arr = _to_nan(FIG5_PAPER_PROP_GAP)
+
+x5_labels = [f"{int(round(r * 100))}%" for r in FIG5_RATES]
 x5 = list(range(len(x5_labels)))
-highlight_idx = FIG5_RATES.index(FIG5_HIGHLIGHT_RATE)
+highlight_idx = FIG5_RATES.index(BEST_RATE)
 
 fig5, (ax5_nrmse, ax5_gap) = plt.subplots(1, 2, figsize=(13, 5))
-fig5.suptitle(f"Fig.5 재현 — 방법1(PC=rate·max(DA,RT)), W1/W2={FIG5_W1}/{FIG5_W2}, rate 스윕", fontsize=14)
+fig5.suptitle(f"Fig.5 재현 — 방법1(PC=rate·max(DA,RT)), W1/W2={FIG5_W1}/{FIG5_W2}, rate 스윕 "
+              "(점선=논문, 0~100%만 존재)", fontsize=13)
 
-ax5_nrmse.plot(x5, FIG5_PAPER_AR_NRMSE, linestyle="--", color="#2a78d6", alpha=0.6, label="논문 AR")
-ax5_nrmse.plot(x5, FIG5_PAPER_PROP_NRMSE, linestyle="--", color="#eb6834", alpha=0.6, label="논문 제안모형")
+ax5_nrmse.plot(x5, fig5_paper_ar_nrmse_arr, linestyle="--", color="#2a78d6", alpha=0.6, label="논문 AR")
+ax5_nrmse.plot(x5, fig5_paper_prop_nrmse_arr, linestyle="--", color="#eb6834", alpha=0.6, label="논문 제안모형")
 ax5_nrmse.plot(x5, fig5_ar_nrmse_list, marker="o", color="#2a78d6", label="재현 AR")
 ax5_nrmse.plot(x5, fig5_prop_nrmse_list, marker="o", color="#eb6834", label="재현 제안모형")
 ax5_nrmse.axvline(highlight_idx, color="gray", linestyle=":", alpha=0.7)
@@ -440,12 +563,12 @@ ax5_nrmse.set_xticks(x5)
 ax5_nrmse.set_xticklabels(x5_labels)
 ax5_nrmse.set_xlabel("벌금비용률(penalty cost rate)")
 ax5_nrmse.set_ylabel("nRMSE (%)")
-ax5_nrmse.set_title("nRMSE 비교 (점선=rate=90%)")
+ax5_nrmse.set_title(f"nRMSE 비교 (점선=rate={int(BEST_RATE*100)}%)")
 ax5_nrmse.grid(True, alpha=0.3)
 ax5_nrmse.legend(fontsize=8)
 
-ax5_gap.plot(x5, FIG5_PAPER_AR_GAP, linestyle="--", color="#2a78d6", alpha=0.6, label="논문 AR")
-ax5_gap.plot(x5, FIG5_PAPER_PROP_GAP, linestyle="--", color="#eb6834", alpha=0.6, label="논문 제안모형")
+ax5_gap.plot(x5, fig5_paper_ar_gap_arr, linestyle="--", color="#2a78d6", alpha=0.6, label="논문 AR")
+ax5_gap.plot(x5, fig5_paper_prop_gap_arr, linestyle="--", color="#eb6834", alpha=0.6, label="논문 제안모형")
 ax5_gap.plot(x5, fig5_ar_gap_list, marker="o", color="#2a78d6", label="재현 AR")
 ax5_gap.plot(x5, fig5_prop_gap_list, marker="o", color="#eb6834", label="재현 제안모형")
 ax5_gap.axvline(highlight_idx, color="gray", linestyle=":", alpha=0.7)
@@ -453,12 +576,12 @@ ax5_gap.set_xticks(x5)
 ax5_gap.set_xticklabels(x5_labels)
 ax5_gap.set_xlabel("벌금비용률(penalty cost rate)")
 ax5_gap.set_ylabel("Optimality Gap (%)")
-ax5_gap.set_title("Optimality Gap 비교 (점선=rate=90%)")
+ax5_gap.set_title(f"Optimality Gap 비교 (점선=rate={int(BEST_RATE*100)}%)")
 ax5_gap.grid(True, alpha=0.3)
 ax5_gap.legend(fontsize=8)
 
 fig5.tight_layout()
-fig5_png_path = os.path.join(BASE_DIR, "results", "temp_fig5_method1_rate09.png")
+fig5_png_path = os.path.join(results_out_dir, "fig5_method1_pc_max_da_rt_ar_v3.png")
 fig5.savefig(fig5_png_path, dpi=150)
 print(f"saved: {fig5_png_path}")
 
