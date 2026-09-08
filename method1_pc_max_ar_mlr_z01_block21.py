@@ -607,7 +607,9 @@ def solve_ar(pc_rate, W1, W2):
 
         ae = sparse.vstack([ea, eb], format="csr")
 
-        con = [LinearConstraint(ae, np.concatenate([np.zeros(n_obs), y_h]))]
+        rhs_ar = np.concatenate([np.zeros(n_obs), y_h])
+
+        con = [LinearConstraint(ae, rhs_ar, rhs_ar)]
 
 
 
@@ -747,7 +749,9 @@ def solve_mlr(pc_rate, W1, W2):
 
     ae = sparse.vstack([ea, eb], format="csr")
 
-    con = [LinearConstraint(ae, np.concatenate([np.zeros(n_obs), mlr_train_solar]))]
+    rhs_mlr = np.concatenate([np.zeros(n_obs), mlr_train_solar])
+
+    con = [LinearConstraint(ae, rhs_mlr, rhs_mlr)]
 
 
 

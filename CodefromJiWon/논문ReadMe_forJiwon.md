@@ -122,8 +122,9 @@ Gurobi 라이선스와 merged_for_simulation_z03.csv가 있는 환경에서 mode
 ### 방법 3
 
 
-### 뱡법 1 (PC = rate·max(DA, RT)) 
+### method1 (PC = rate·max(DA, RT)) 
 
+method1_pc_max_da_rt_ar_v3.py, method1_pc_max_da_rt_mlr_v2.py
 
 
 #### 변경 내용
