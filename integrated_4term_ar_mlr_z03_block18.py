@@ -96,6 +96,24 @@ PAPER_PROP_NRMSE = [34.89, 35.14, 36.28, 41.09, 44.95,
                     46.11, 48.27, 49.21, 49.61, 50.07]
 PAPER_PROP_GAP = [13.91, 13.42, 12.71, 11.88, 11.44,
                   11.38, 11.38, 11.36, 11.36, 11.36]
+# 논문 Table 4 (MLR 제안모형, W1/W2 10개점) — AR(Table 3)과 다른 값이므로 별도로 둠
+PAPER_PROP_MLR_NRMSE = [21.92, 21.84, 21.75, 21.66, 22.01,
+                        23.32, 27.75, 30.62, 35.76, 37.67]
+PAPER_PROP_MLR_GAP = [11.91, 11.68, 11.15, 10.65, 10.28,
+                      9.91, 9.51, 9.32, 9.27, 9.28]
+
+# 논문 원본 Fig.5(a)/(b) 육안 판독값 (AR, rate 0~100% 11개점) — 50%만 Table 3 실측치,
+# 나머지는 CodefromJiWon/model_proposed_ar_profit_change_v3.py의 판독값을 그대로 재사용
+FIG5_PAPER_AR_NRMSE   = [34.76] * 11
+FIG5_PAPER_AR_GAP     = [9, 11, 12, 13, 14, 15.04, 16, 18, 19, 20, 22]
+FIG5_PAPER_PROP_NRMSE = [46, 34, 35, 36, 40, 44.45, 50, 55, 61, 64, 67]
+FIG5_PAPER_PROP_GAP   = [8, 10, 11, 11, 11, 11.44, 11, 11.5, 11.5, 11.5, 11.5]
+# 논문 원본 Fig.8(a)/(b) 육안 판독값 (MLR, rate 0~100% 11개점) — 50%만 Table 4 실측치,
+# 나머지는 논문 PDF Fig.8(a)/(b) 그래프에서 직접 판독
+FIG8_PAPER_MLR_NRMSE  = [21.76] * 11
+FIG8_PAPER_PROP_NRMSE = [24.0, 22.5, 21.8, 21.3, 21.8, 22.01, 22.4, 23.0, 23.7, 25.0, 26.2]
+FIG8_PAPER_MLR_GAP    = [8.0, 8.9, 9.8, 10.7, 11.6, 12.59, 13.4, 14.3, 15.2, 16.1, 17.0]
+FIG8_PAPER_PROP_GAP   = [7.7, 9.2, 9.5, 10.0, 10.3, 10.28, 10.7, 10.9, 10.9, 11.0, 10.9]
 
 
 # =====================================================================
@@ -637,23 +655,25 @@ fig, ax_l = plt.subplots(figsize=(10, 6))
 fig.suptitle(f"Fig.3 — AR 4항식, rate={FIG36_RATE}, W1/W2 스윕 (dual y축)", fontsize=13)
 ax_r = ax_l.twinx()
 
-ln1 = ax_l.plot(x, fig3_ar_n,   marker="o", color=C_AR_BASE,  linewidth=2, label="AR baseline nRMSE")
-ln2 = ax_l.plot(x, fig3_ar_n,   marker="o", color=C_AR_PROP,  linewidth=2, label="제안모형 nRMSE",
-                alpha=0.7, linestyle="-")
-# 2번째 선은 baseline 제외 제안모형 값만 (첫 요소는 아리므로 처리)
-prop_n = [fig3_ar_n[0]] + fig3_ar_n[1:]  # 동일하게 표시
-ln3 = ax_r.plot(x, fig3_ar_g,   marker="s", color=C_AR_BASE,  linewidth=2,
-                linestyle="--", label="AR baseline Gap", alpha=0.7)
-ln4 = ax_r.plot(x, fig3_ar_g,   marker="s", color=C_AR_PROP,  linewidth=2,
-                linestyle="--", label="제안모형 Gap", alpha=0.7)
+paper_nrmse_all = [PAPER_AR_NRMSE] + PAPER_PROP_NRMSE
+paper_gap_all = [PAPER_AR_GAP] + PAPER_PROP_GAP
+ln1 = ax_l.plot(x, paper_nrmse_all, marker="o", color="#4C72B0",
+                linewidth=2, label="논문 nRMSE")
+ln2 = ax_l.plot(x, fig3_ar_n,   marker="o", color="#1a3a6b",
+                linewidth=2, label="재현 nRMSE")
+ln3 = ax_r.plot(x, paper_gap_all, marker="s", color="#eb9834",
+                linewidth=2, linestyle="--", label="논문 Gap")
+ln4 = ax_r.plot(x, fig3_ar_g,   marker="s", color="#b35900",
+                linewidth=2, linestyle="--", label="재현 Gap")
 
 ax_l.set_xticks(x); ax_l.set_xticklabels(FIG_LABELS)
-ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color=C_AR_BASE)
-ax_r.set_ylabel("Optimality Gap (%)", color=C_AR_PROP)
-ax_l.tick_params(axis="y", labelcolor=C_AR_BASE)
-ax_r.tick_params(axis="y", labelcolor=C_AR_PROP)
+ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color="#2a5599")
+ax_r.set_ylabel("Optimality Gap (%)", color="#b35900")
+ax_l.tick_params(axis="y", labelcolor="#2a5599")
+ax_r.tick_params(axis="y", labelcolor="#b35900")
 ax_l.grid(True, alpha=0.3)
-ax_l.legend(ln1+ln2+ln3+ln4, [l.get_label() for l in ln1+ln2+ln3+ln4],
+all_ln = ln1+ln2+ln3+ln4
+ax_l.legend(all_ln, [l.get_label() for l in all_ln],
             loc="upper left", fontsize=9)
 fig.tight_layout()
 p3 = os.path.join(RESULTS_DIR, "fig3_ar_4term_z03_block18.png")
@@ -674,23 +694,33 @@ lbl5 = [f"{int(r*100)}%" for r in FIG_RATES]
 fig5_fig, (ax5n, ax5g) = plt.subplots(1, 2, figsize=(13, 5))
 fig5_fig.suptitle(f"Fig.5 — AR 4항식, W1=W2=1, penalty rate 스윕", fontsize=13)
 
+x5_paper = x5[:11]  # 논문 판독값은 rate 0~100%(11개점)까지만 있음
+
 # nRMSE
-ax5n.plot(x5, fig5_ar_n_list, marker="o", color=C_AR_BASE, linewidth=2, label="AR baseline nRMSE")
-ax5n.plot(x5, fig5_ar_prop_n, marker="s", color=C_AR_PROP, linewidth=2, label="제안모형 nRMSE")
+ax5n.plot(x5_paper, FIG5_PAPER_AR_NRMSE, linestyle="--", color="#4C72B0", alpha=0.8,
+          marker="o", markersize=4, label="논문 AR")
+ax5n.plot(x5_paper, FIG5_PAPER_PROP_NRMSE, linestyle="--", color="#eb9834", alpha=0.8,
+          marker="s", markersize=4, label="논문 제안모형")
+ax5n.plot(x5, fig5_ar_n_list, marker="o", color="#1a3a6b", linewidth=2, label="재현 AR")
+ax5n.plot(x5, fig5_ar_prop_n, marker="s", color="#b35900", linewidth=2, label="재현 제안모형")
 ax5n.set_xticks(x5); ax5n.set_xticklabels(lbl5, rotation=45)
 ax5n.set_xlabel("벌금비용률"); ax5n.set_ylabel("nRMSE (%)")
-ax5n.set_title("nRMSE"); ax5n.grid(True, alpha=0.3); ax5n.legend(fontsize=9)
+ax5n.set_title("nRMSE"); ax5n.grid(True, alpha=0.3); ax5n.legend(fontsize=8)
 
 # Gap
-ax5g.plot(x5, fig5_ar_g_list, marker="o", color=C_AR_BASE, linewidth=2, label="AR baseline Gap")
-ax5g.plot(x5, fig5_ar_prop_g, marker="s", color=C_AR_PROP, linewidth=2, label="제안모형 Gap")
+ax5g.plot(x5_paper, FIG5_PAPER_AR_GAP, linestyle="--", color="#4C72B0", alpha=0.8,
+          marker="o", markersize=4, label="논문 AR")
+ax5g.plot(x5_paper, FIG5_PAPER_PROP_GAP, linestyle="--", color="#eb9834", alpha=0.8,
+          marker="s", markersize=4, label="논문 제안모형")
+ax5g.plot(x5, fig5_ar_g_list, marker="o", color="#1a3a6b", linewidth=2, label="재현 AR")
+ax5g.plot(x5, fig5_ar_prop_g, marker="s", color="#b35900", linewidth=2, label="재현 제안모형")
 hl = FIG_RATES.index(KPI_RATE) if KPI_RATE in FIG_RATES else None
 if hl is not None:
     ax5g.axvline(hl, color=C_GRID, linestyle=":", linewidth=1.5,
                  label=f"KPI rate={int(KPI_RATE*100)}%")
 ax5g.set_xticks(x5); ax5g.set_xticklabels(lbl5, rotation=45)
 ax5g.set_xlabel("벌금비용률"); ax5g.set_ylabel("Optimality Gap (%)")
-ax5g.set_title("Optimality Gap"); ax5g.grid(True, alpha=0.3); ax5g.legend(fontsize=9)
+ax5g.set_title("Optimality Gap"); ax5g.grid(True, alpha=0.3); ax5g.legend(fontsize=8)
 
 fig5_fig.tight_layout()
 p5 = os.path.join(RESULTS_DIR, "fig5_ar_4term_z03_block18.png")
@@ -709,20 +739,25 @@ fig6_fig, ax_l = plt.subplots(figsize=(10, 6))
 fig6_fig.suptitle(f"Fig.6 — MLR 4항식, rate={FIG36_RATE}, W1/W2 스윕 (dual y축)", fontsize=13)
 ax_r = ax_l.twinx()
 
-ln1 = ax_l.plot(x, fig6_mlr_n,  marker="o", color=C_MLR_BASE,  linewidth=2, label="MLR baseline nRMSE")
-ln2 = ax_l.plot(x, fig6_mlr_n,  marker="o", color=C_MLR_PROP,  linewidth=2, label="제안모형 nRMSE", alpha=0.7)
-ln3 = ax_r.plot(x, fig6_mlr_g,  marker="s", color=C_MLR_BASE,  linewidth=2,
-                linestyle="--", label="MLR baseline Gap", alpha=0.7)
-ln4 = ax_r.plot(x, fig6_mlr_g,  marker="s", color=C_MLR_PROP,  linewidth=2,
-                linestyle="--", label="제안모형 Gap", alpha=0.7)
+paper_mlr_nrmse_all = [PAPER_MLR_NRMSE] + PAPER_PROP_MLR_NRMSE
+paper_mlr_gap_all = [PAPER_MLR_GAP] + PAPER_PROP_MLR_GAP
+ln1 = ax_l.plot(x, paper_mlr_nrmse_all, marker="o", color="#4C72B0",
+                linewidth=2, label="논문 nRMSE")
+ln2 = ax_l.plot(x, fig6_mlr_n,  marker="o", color="#1a3a6b",
+                linewidth=2, label="재현 nRMSE")
+ln3 = ax_r.plot(x, paper_mlr_gap_all, marker="s", color="#eb9834",
+                linewidth=2, linestyle="--", label="논문 Gap")
+ln4 = ax_r.plot(x, fig6_mlr_g,  marker="s", color="#b35900",
+                linewidth=2, linestyle="--", label="재현 Gap")
 
 ax_l.set_xticks(x); ax_l.set_xticklabels(FIG_LABELS)
-ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color=C_MLR_BASE)
-ax_r.set_ylabel("Optimality Gap (%)", color=C_MLR_PROP)
-ax_l.tick_params(axis="y", labelcolor=C_MLR_BASE)
-ax_r.tick_params(axis="y", labelcolor=C_MLR_PROP)
+ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color="#2a5599")
+ax_r.set_ylabel("Optimality Gap (%)", color="#b35900")
+ax_l.tick_params(axis="y", labelcolor="#2a5599")
+ax_r.tick_params(axis="y", labelcolor="#b35900")
 ax_l.grid(True, alpha=0.3)
-ax_l.legend(ln1+ln2+ln3+ln4, [l.get_label() for l in ln1+ln2+ln3+ln4],
+all_ln = ln1+ln2+ln3+ln4
+ax_l.legend(all_ln, [l.get_label() for l in all_ln],
             loc="upper left", fontsize=9)
 fig6_fig.tight_layout()
 p6 = os.path.join(RESULTS_DIR, "fig6_mlr_4term_z03_block18.png")
@@ -741,21 +776,29 @@ fig8_fig, (ax8n, ax8g) = plt.subplots(1, 2, figsize=(13, 5))
 fig8_fig.suptitle(f"Fig.8 — MLR 4항식, W1=W2=1, penalty rate 스윕", fontsize=13)
 
 # nRMSE
-ax8n.plot(x5, fig8_mlr_n_list, marker="o", color=C_MLR_BASE, linewidth=2, label="MLR baseline nRMSE")
-ax8n.plot(x5, fig8_mlr_prop_n, marker="s", color=C_MLR_PROP, linewidth=2, label="제안모형 nRMSE")
+ax8n.plot(x5_paper, FIG8_PAPER_MLR_NRMSE, linestyle="--", color="#CC4654", alpha=0.8,
+          marker="o", markersize=4, label="논문 MLR")
+ax8n.plot(x5_paper, FIG8_PAPER_PROP_NRMSE, linestyle="--", color="#8CAED6", alpha=0.8,
+          marker="s", markersize=4, label="논문 제안모형")
+ax8n.plot(x5, fig8_mlr_n_list, marker="o", color="#7a1f28", linewidth=2, label="재현 MLR")
+ax8n.plot(x5, fig8_mlr_prop_n, marker="s", color="#3d6a8f", linewidth=2, label="재현 제안모형")
 ax8n.set_xticks(x5); ax8n.set_xticklabels(lbl5, rotation=45)
 ax8n.set_xlabel("벌금비용률"); ax8n.set_ylabel("nRMSE (%)")
-ax8n.set_title("nRMSE"); ax8n.grid(True, alpha=0.3); ax8n.legend(fontsize=9)
+ax8n.set_title("nRMSE"); ax8n.grid(True, alpha=0.3); ax8n.legend(fontsize=8)
 
 # Gap
-ax8g.plot(x5, fig8_mlr_g_list, marker="o", color=C_MLR_BASE, linewidth=2, label="MLR baseline Gap")
-ax8g.plot(x5, fig8_mlr_prop_g, marker="s", color=C_MLR_PROP, linewidth=2, label="제안모형 Gap")
+ax8g.plot(x5_paper, FIG8_PAPER_MLR_GAP, linestyle="--", color="#CC4654", alpha=0.8,
+          marker="o", markersize=4, label="논문 MLR")
+ax8g.plot(x5_paper, FIG8_PAPER_PROP_GAP, linestyle="--", color="#8CAED6", alpha=0.8,
+          marker="s", markersize=4, label="논문 제안모형")
+ax8g.plot(x5, fig8_mlr_g_list, marker="o", color="#7a1f28", linewidth=2, label="재현 MLR")
+ax8g.plot(x5, fig8_mlr_prop_g, marker="s", color="#3d6a8f", linewidth=2, label="재현 제안모형")
 if hl is not None:
     ax8g.axvline(hl, color=C_GRID, linestyle=":", linewidth=1.5,
                  label=f"KPI rate={int(KPI_RATE*100)}%")
 ax8g.set_xticks(x5); ax8g.set_xticklabels(lbl5, rotation=45)
 ax8g.set_xlabel("벌금비용률"); ax8g.set_ylabel("Optimality Gap (%)")
-ax8g.set_title("Optimality Gap"); ax8g.grid(True, alpha=0.3); ax8g.legend(fontsize=9)
+ax8g.set_title("Optimality Gap"); ax8g.grid(True, alpha=0.3); ax8g.legend(fontsize=8)
 
 fig8_fig.tight_layout()
 p8 = os.path.join(RESULTS_DIR, "fig8_mlr_4term_z03_block18.png")

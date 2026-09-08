@@ -111,9 +111,11 @@ PAPER_AR_PROP_GAP = [13.91, 13.42, 12.71, 11.88, 11.44,
 # MLR 제안모형 KPI (W1/W2=1/20) — 논문 Table 4
 PAPER_MLR_PROP_NRMSE_KPI = 21.92
 PAPER_MLR_PROP_GAP_KPI = 11.91
-# MLR 스윕값은 논문에 없으므로 AR 스윕값을 참고선으로 사용
-PAPER_MLR_PROP_NRMSE = PAPER_AR_PROP_NRMSE
-PAPER_MLR_PROP_GAP = PAPER_AR_PROP_GAP
+# MLR 제안모형 W1/W2 스윕 논문값 (Table 4, Fig.6) — AR(Table 3)과 다른 값
+PAPER_MLR_PROP_NRMSE = [21.92, 21.84, 21.75, 21.66, 22.01,
+                        23.32, 27.75, 30.62, 35.76, 37.67]
+PAPER_MLR_PROP_GAP = [11.91, 11.68, 11.15, 10.65, 10.28,
+                      9.91, 9.51, 9.32, 9.27, 9.28]
 
 
 # =====================================================================
@@ -766,26 +768,30 @@ fig5_fig.suptitle(f"Fig.5 — AR, Zhang 비대칭, W1/W2={FIG_C_W1}/{FIG_C_W2}, 
 ax5n.axhline(ar_nrmse, linestyle="--", color=C_AR_BASE, alpha=0.6, label="재현 AR")
 ax5n.plot(x5, fig5_ar_prop_n, marker="o", color=C_AR_PROP, linewidth=2,
           label="재현 제안모형")
+ax5n.axhline(PAPER_AR_BASE_NRMSE, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 AR nRMSE")
 if hl_idx is not None:
     ax5n.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
                  label=f"Best c={BEST_C}")
 ax5n.set_xticks(x5); ax5n.set_xticklabels(lbl5)
 ax5n.set_xlabel("c (rho_plus = c * RT)")
 ax5n.set_ylabel("nRMSE (%)")
-ax5n.set_title("nRMSE"); ax5n.grid(True, alpha=0.3); ax5n.legend(fontsize=9)
+ax5n.set_title("nRMSE"); ax5n.grid(True, alpha=0.3); ax5n.legend(fontsize=8)
 
 # Gap
 ax5g.plot(x5, fig5_ar_g_list, marker="o", color=C_AR_BASE, linewidth=2,
           label="재현 AR Gap")
 ax5g.plot(x5, fig5_ar_prop_g, marker="o", color=C_AR_PROP, linewidth=2,
           label="재현 제안모형 Gap")
+ax5g.axhline(PAPER_AR_BASE_GAP, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 AR Gap")
 if hl_idx is not None:
     ax5g.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
                  label=f"Best c={BEST_C}")
 ax5g.set_xticks(x5); ax5g.set_xticklabels(lbl5)
 ax5g.set_xlabel("c (rho_plus = c * RT)")
 ax5g.set_ylabel("Optimality Gap (%)")
-ax5g.set_title("Optimality Gap"); ax5g.grid(True, alpha=0.3); ax5g.legend(fontsize=9)
+ax5g.set_title("Optimality Gap"); ax5g.grid(True, alpha=0.3); ax5g.legend(fontsize=8)
 
 fig5_fig.tight_layout()
 p5 = os.path.join(RESULTS_DIR, "fig5_zhang_asym_c_AR.png")
@@ -843,26 +849,30 @@ fig8_fig.suptitle(f"Fig.8 — MLR, Zhang 비대칭, W1/W2={FIG_C_W1}/{FIG_C_W2},
 ax8n.axhline(mlr_nrmse, linestyle="--", color=C_MLR_BASE, alpha=0.6, label="재현 MLR")
 ax8n.plot(x5, fig8_mlr_prop_n, marker="o", color=C_MLR_PROP, linewidth=2,
           label="재현 제안모형")
+ax8n.axhline(PAPER_MLR_BASE_NRMSE, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 MLR nRMSE")
 if hl_idx is not None:
     ax8n.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
                  label=f"Best c={BEST_C}")
 ax8n.set_xticks(x5); ax8n.set_xticklabels(lbl5)
 ax8n.set_xlabel("c (rho_plus = c * RT)")
 ax8n.set_ylabel("nRMSE (%)")
-ax8n.set_title("nRMSE"); ax8n.grid(True, alpha=0.3); ax8n.legend(fontsize=9)
+ax8n.set_title("nRMSE"); ax8n.grid(True, alpha=0.3); ax8n.legend(fontsize=8)
 
 # Gap
 ax8g.plot(x5, fig8_mlr_g_list, marker="o", color=C_MLR_BASE, linewidth=2,
           label="재현 MLR Gap")
 ax8g.plot(x5, fig8_mlr_prop_g, marker="o", color=C_MLR_PROP, linewidth=2,
           label="재현 제안모형 Gap")
+ax8g.axhline(PAPER_MLR_BASE_GAP, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 MLR Gap")
 if hl_idx is not None:
     ax8g.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
                  label=f"Best c={BEST_C}")
 ax8g.set_xticks(x5); ax8g.set_xticklabels(lbl5)
 ax8g.set_xlabel("c (rho_plus = c * RT)")
 ax8g.set_ylabel("Optimality Gap (%)")
-ax8g.set_title("Optimality Gap"); ax8g.grid(True, alpha=0.3); ax8g.legend(fontsize=9)
+ax8g.set_title("Optimality Gap"); ax8g.grid(True, alpha=0.3); ax8g.legend(fontsize=8)
 
 fig8_fig.tight_layout()
 p8 = os.path.join(RESULTS_DIR, "fig8_zhang_asym_c_MLR.png")
