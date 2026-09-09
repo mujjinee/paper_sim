@@ -435,18 +435,20 @@ fig, ax = plt.subplots(figsize=(10, 6))
 fig.suptitle("Fig.3 — AR, W1/W2 스윕 (rate=0.5, PC=rate*(DA+RT))", fontsize=13)
 ax_r = ax.twinx()
 
-ax.plot(x_w, paper_ar_nrmse_all, marker="o", color=C_PAPER, lw=2, ls=":",
+ax.plot(x_w, paper_ar_nrmse_all, marker="o", color=C_PAPER, lw=2, ls="--",
         label="논문 nRMSE", alpha=0.8)
-ax.plot(x_w, f3n_all, marker="o", color=C_PROP, lw=2.5, label="재현 nRMSE")
-ax_r.plot(x_w, paper_ar_gap_all, marker="s", color=C_PAPER, lw=2, ls=":",
+ax.plot(x_w, f3n_all, marker="o", color=C_PROP, lw=2.5, ls="-", label="재현 nRMSE")
+ax_r.plot(x_w, paper_ar_gap_all, marker="s", color=C_PAPER, lw=2, ls="--",
           label="논문 Gap", alpha=0.8)
-ax_r.plot(x_w, f3g_all, marker="s", color=C_PROP, lw=2.5, ls="--", label="재현 Gap")
+ax_r.plot(x_w, f3g_all, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현 Gap")
 
 ax.set_xticks(x_w); ax.set_xticklabels(W_LABELS_ALL)
 ax.set_xlabel("W1/W2"); ax.set_ylabel("nRMSE (%)", color=C_PAPER)
 ax_r.set_ylabel("Optimality Gap (%)", color=C_PROP)
 ax.tick_params(axis="y", labelcolor=C_PAPER); ax_r.tick_params(axis="y", labelcolor=C_PROP)
 ax.grid(True, alpha=0.3, color=C_GRID)
+ax.set_ylim(30, 80)
+ax_r.set_ylim(0, 25)
 h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax_r.get_legend_handles_labels()
 ax.legend(h1+h2, l1+l2, loc="upper left", fontsize=10)
 fig.tight_layout()
@@ -476,22 +478,24 @@ a5n.plot(x_rates, fig5_paper_ar_n, ls="--", color=C_AR, marker="o", markersize=4
          alpha=0.6, label="논문 AR")
 a5n.plot(x_rates, fig5_paper_prop_n, ls="--", color=C_PROP, marker="s", markersize=4,
          alpha=0.6, label="논문 제안모형")
-a5n.axhline(ar_nrmse, color=C_AR, lw=2.5, label="재현 AR")
-a5n.plot(x_rates, f5_pn, marker="s", color=C_PROP, lw=2.5, label="재현 제안모형")
+a5n.axhline(ar_nrmse, color=C_AR, lw=2.5, ls="-", label="재현 AR")
+a5n.plot(x_rates, f5_pn, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현 제안모형")
 a5n.set_xticks(x_rates); a5n.set_xticklabels(lbl, rotation=45)
 a5n.set_xlabel("벌금비용률"); a5n.set_ylabel("nRMSE (%)")
 a5n.set_title("nRMSE"); a5n.grid(True, alpha=0.3, color=C_GRID); a5n.legend(fontsize=8)
+a5n.set_ylim(30, 80)
 
 a5g.plot(x_rates, fig5_paper_ar_g, ls="--", color=C_AR, marker="o", markersize=4,
          alpha=0.6, label="논문 AR")
 a5g.plot(x_rates, fig5_paper_prop_g, ls="--", color=C_PROP, marker="s", markersize=4,
          alpha=0.6, label="논문 제안모형")
-a5g.plot(x_rates, f5_bg, color=C_AR, lw=2.5, marker="o", label="재현 AR")
-a5g.plot(x_rates, f5_pg, marker="s", color=C_PROP, lw=2.5, label="재현 제안모형")
+a5g.plot(x_rates, f5_bg, color=C_AR, lw=2.5, ls="-", marker="o", label="재현 AR")
+a5g.plot(x_rates, f5_pg, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현 제안모형")
 a5g.axvline(hl, color=C_GRID, ls=":", lw=1.5, label=f"KPI rate={int(KPI_RATE*100)}%")
 a5g.set_xticks(x_rates); a5g.set_xticklabels(lbl, rotation=45)
 a5g.set_xlabel("벌금비용률"); a5g.set_ylabel("Optimality Gap (%)")
 a5g.set_title("Optimality Gap"); a5g.grid(True, alpha=0.3, color=C_GRID); a5g.legend(fontsize=8)
+a5g.set_ylim(0, 25)
 
 fig5.tight_layout()
 p5 = os.path.join(RESULTS_DIR, "fig5_pc_da_plus_rt_rate_AR.png")
@@ -515,18 +519,20 @@ paper_mlr_gap_all = [PAPER_MLR_BASE_GAP] + PAPER_MLR_PROP_GAP
 f6n_all = [mlr_nrmse] + f6n
 f6g_all = [mlr_kpi_gap_base] + f6g
 
-ax6.plot(x_w, paper_mlr_nrmse_all, marker="o", color=C_PAPER, lw=2, ls=":",
+ax6.plot(x_w, paper_mlr_nrmse_all, marker="o", color=C_PAPER, lw=2, ls="--",
          label="논문 nRMSE", alpha=0.8)
-ax6.plot(x_w, f6n_all, marker="o", color=C_PROP, lw=2.5, label="재현 nRMSE")
-ax6_r.plot(x_w, paper_mlr_gap_all, marker="s", color=C_PAPER, lw=2, ls=":",
+ax6.plot(x_w, f6n_all, marker="o", color=C_PROP, lw=2.5, ls="-", label="재현 nRMSE")
+ax6_r.plot(x_w, paper_mlr_gap_all, marker="s", color=C_PAPER, lw=2, ls="--",
            label="논문 Gap", alpha=0.8)
-ax6_r.plot(x_w, f6g_all, marker="s", color=C_PROP, lw=2.5, ls="--", label="재현 Gap")
+ax6_r.plot(x_w, f6g_all, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현 Gap")
 
 ax6.set_xticks(x_w); ax6.set_xticklabels(W_LABELS_ALL)
 ax6.set_xlabel("W1/W2"); ax6.set_ylabel("nRMSE (%)", color=C_PAPER)
 ax6_r.set_ylabel("Optimality Gap (%)", color=C_PROP)
 ax6.tick_params(axis="y", labelcolor=C_PAPER); ax6_r.tick_params(axis="y", labelcolor=C_PROP)
 ax6.grid(True, alpha=0.3, color=C_GRID)
+ax6.set_ylim(0, 80)
+ax6_r.set_ylim(0, 25)
 h1, l1 = ax6.get_legend_handles_labels(); h2, l2 = ax6_r.get_legend_handles_labels()
 ax6.legend(h1+h2, l1+l2, loc="upper left", fontsize=10)
 fig6.tight_layout()
@@ -553,22 +559,24 @@ a8n.plot(x_rates, fig8_paper_mlr_n, ls="--", color=C_MLR, marker="o", markersize
          alpha=0.6, label="논문 MLR")
 a8n.plot(x_rates, fig8_paper_prop_n, ls="--", color=C_PROP, marker="s", markersize=4,
          alpha=0.6, label="논문 제안모형")
-a8n.axhline(mlr_nrmse, color=C_MLR, lw=2.5, label="재현 MLR")
-a8n.plot(x_rates, f8_pn, marker="s", color=C_PROP, lw=2.5, label="재현 제안모형")
+a8n.axhline(mlr_nrmse, color=C_MLR, lw=2.5, ls="-", label="재현 MLR")
+a8n.plot(x_rates, f8_pn, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현 제안모형")
 a8n.set_xticks(x_rates); a8n.set_xticklabels(lbl, rotation=45)
 a8n.set_xlabel("벌금비용률"); a8n.set_ylabel("nRMSE (%)")
 a8n.set_title("nRMSE"); a8n.grid(True, alpha=0.3, color=C_GRID); a8n.legend(fontsize=8)
+a8n.set_ylim(0, 80)
 
 a8g.plot(x_rates, fig8_paper_mlr_g, ls="--", color=C_MLR, marker="o", markersize=4,
          alpha=0.6, label="논문 MLR")
 a8g.plot(x_rates, fig8_paper_prop_g, ls="--", color=C_PROP, marker="s", markersize=4,
          alpha=0.6, label="논문 제안모형")
-a8g.plot(x_rates, f8_bg, color=C_MLR, lw=2.5, marker="o", label="재현 MLR")
-a8g.plot(x_rates, f8_pg, marker="s", color=C_PROP, lw=2.5, label="재현 제안모형")
+a8g.plot(x_rates, f8_bg, color=C_MLR, lw=2.5, ls="-", marker="o", label="재현 MLR")
+a8g.plot(x_rates, f8_pg, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현 제안모형")
 a8g.axvline(hl, color=C_GRID, ls=":", lw=1.5, label=f"KPI rate={int(KPI_RATE*100)}%")
 a8g.set_xticks(x_rates); a8g.set_xticklabels(lbl, rotation=45)
 a8g.set_xlabel("벌금비용률"); a8g.set_ylabel("Optimality Gap (%)")
 a8g.set_title("Optimality Gap"); a8g.grid(True, alpha=0.3, color=C_GRID); a8g.legend(fontsize=8)
+a8g.set_ylim(0, 25)
 
 fig8.tight_layout()
 p8 = os.path.join(RESULTS_DIR, "fig8_pc_da_plus_rt_rate_MLR.png")

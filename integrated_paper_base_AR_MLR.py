@@ -25,6 +25,21 @@ from scipy.optimize import Bounds, LinearConstraint, milp   # 혼합정수계획
 import matplotlib
 matplotlib.use("Agg")                         # GUI 없이 그림 저장용 백엔드
 import matplotlib.pyplot as plt              # 그림 그리기 라이브러리
+import matplotlib.font_manager as fm         # 한글 폰트를 찾아 쓰기 위한 서브모듈
+
+# =====================================================================
+# 0-1. 한글 폰트 + matplotlib 스타일
+#      (legend/axis label의 한글이 네모(□□)로 깨지는 문제 방지)
+# =====================================================================
+korean_font_candidates = ["Malgun Gothic", "NanumGothic", "AppleGothic"]
+found_font_name = None
+for font in fm.fontManager.ttflist:
+    if font.name in korean_font_candidates:
+        found_font_name = font.name
+        break
+if found_font_name:
+    plt.rcParams["font.family"] = found_font_name
+plt.rcParams["axes.unicode_minus"] = False
 
 
 # =====================================================================
@@ -32,7 +47,7 @@ import matplotlib.pyplot as plt              # 그림 그리기 라이브러리
 # =====================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))           # 이 파이썬 파일이 있는 폴더 경로
 MERGED_FILE = os.path.join(BASE_DIR, "merged_for_simulation_z03.csv")  # 읽어올 병합 데이터 파일 경로
-RESULTS_DIR = os.path.join(BASE_DIR, "results", "simulation_output")
+RESULTS_DIR = os.path.join(BASE_DIR, "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 HOURS_PER_DAY = 12               # 하루 낮 시간대 개수 (Sydney 현지시간 9시~20시)
@@ -622,12 +637,14 @@ ax1.plot(x_pos, ar_sweep_nrmse, "o-", color="#2a78d6", linewidth=2, markersize=6
 ax1.plot(x_pos, PAPER_AR_NRMSE_LIST, "s--", color="#2a78d6", alpha=0.5, linewidth=1.5, label="논문 nRMSE")
 ax1.tick_params(axis="y", labelcolor="#2a78d6")
 ax1.grid(True, alpha=0.3)
+ax1.set_ylim(30, 80)
 
 ax2 = ax1.twinx()
 ax2.set_ylabel("Optimality Gap (%)", color="#eb6834")
 ax2.plot(x_pos, ar_sweep_gap, "o-", color="#eb6834", linewidth=2, markersize=6, label="구현 Gap")
 ax2.plot(x_pos, PAPER_AR_GAP_LIST, "s--", color="#eb6834", alpha=0.5, linewidth=1.5, label="논문 Gap")
 ax2.tick_params(axis="y", labelcolor="#eb6834")
+ax2.set_ylim(0, 25)
 
 ax1.set_xticks(x_pos)
 ax1.set_xticklabels(W_LABELS, rotation=45, ha="right", fontsize=9)
@@ -654,6 +671,7 @@ ax5n.plot(x_rate, ar_rate_n, "o-", color="#2a78d6", linewidth=2, markersize=5, l
 ax5n.set_xticks(x_rate); ax5n.set_xticklabels(lbl_rate, rotation=45)
 ax5n.set_xlabel("벌금비용률"); ax5n.set_ylabel("nRMSE (%)")
 ax5n.set_title("nRMSE"); ax5n.grid(True, alpha=0.3); ax5n.legend(fontsize=10)
+ax5n.set_ylim(30, 80)
 
 ax5g.plot(x_rate, ar_rate_g, "o-", color="#eb6834", linewidth=2, markersize=5, label="Gap")
 hl = RATE_LIST.index(KPI_RATE) if KPI_RATE in RATE_LIST else None
@@ -662,6 +680,7 @@ if hl is not None:
 ax5g.set_xticks(x_rate); ax5g.set_xticklabels(lbl_rate, rotation=45)
 ax5g.set_xlabel("벌금비용률"); ax5g.set_ylabel("Optimality Gap (%)")
 ax5g.set_title("Optimality Gap"); ax5g.grid(True, alpha=0.3); ax5g.legend(fontsize=10)
+ax5g.set_ylim(0, 25)
 
 fig5.tight_layout(rect=[0, 0, 1, 0.93])
 p5 = os.path.join(RESULTS_DIR, "fig5_paper_rate_AR.png")
@@ -679,12 +698,14 @@ ax1.plot(x_pos, mlr_sweep_nrmse, "o-", color="#eb6834", linewidth=2, markersize=
 ax1.plot(x_pos, PAPER_MLR_NRMSE_LIST, "s--", color="#eb6834", alpha=0.5, linewidth=1.5, label="논문 nRMSE")
 ax1.tick_params(axis="y", labelcolor="#eb6834")
 ax1.grid(True, alpha=0.3)
+ax1.set_ylim(0, 80)
 
 ax2 = ax1.twinx()
 ax2.set_ylabel("Optimality Gap (%)", color="#2a78d6")
 ax2.plot(x_pos, mlr_sweep_gap, "o-", color="#2a78d6", linewidth=2, markersize=6, label="구현 Gap")
 ax2.plot(x_pos, PAPER_MLR_GAP_LIST, "s--", color="#2a78d6", alpha=0.5, linewidth=1.5, label="논문 Gap")
 ax2.tick_params(axis="y", labelcolor="#2a78d6")
+ax2.set_ylim(0, 25)
 
 ax1.set_xticks(x_pos)
 ax1.set_xticklabels(W_LABELS, rotation=45, ha="right", fontsize=9)
@@ -708,6 +729,7 @@ ax8n.plot(x_rate, mlr_rate_n, "o-", color="#eb6834", linewidth=2, markersize=5, 
 ax8n.set_xticks(x_rate); ax8n.set_xticklabels(lbl_rate, rotation=45)
 ax8n.set_xlabel("벌금비용률"); ax8n.set_ylabel("nRMSE (%)")
 ax8n.set_title("nRMSE"); ax8n.grid(True, alpha=0.3); ax8n.legend(fontsize=10)
+ax8n.set_ylim(0, 80)
 
 ax8g.plot(x_rate, mlr_rate_g, "o-", color="#2a78d6", linewidth=2, markersize=5, label="Gap")
 if hl is not None:
@@ -715,6 +737,7 @@ if hl is not None:
 ax8g.set_xticks(x_rate); ax8g.set_xticklabels(lbl_rate, rotation=45)
 ax8g.set_xlabel("벌금비용률"); ax8g.set_ylabel("Optimality Gap (%)")
 ax8g.set_title("Optimality Gap"); ax8g.grid(True, alpha=0.3); ax8g.legend(fontsize=10)
+ax8g.set_ylim(0, 25)
 
 fig8.tight_layout(rect=[0, 0, 1, 0.93])
 p8 = os.path.join(RESULTS_DIR, "fig8_paper_rate_MLR.png")

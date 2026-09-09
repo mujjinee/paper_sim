@@ -34,6 +34,8 @@ styles = {
                           spaceBefore=16, spaceAfter=8, textColor=colors.HexColor("#1a3a6b")),
     "h3": ParagraphStyle("h3", fontName=FONT_BOLD, fontSize=12.5, leading=17,
                           spaceBefore=12, spaceAfter=6, textColor=colors.HexColor("#2a4a7b")),
+    "h4": ParagraphStyle("h4", fontName=FONT_BOLD, fontSize=10.5, leading=14,
+                          spaceBefore=10, spaceAfter=5, textColor=colors.HexColor("#3a5a8b")),
     "body": ParagraphStyle("body", fontName=FONT_BODY, fontSize=9.5, leading=15,
                             spaceBefore=2, spaceAfter=6, alignment=TA_LEFT),
     "quote": ParagraphStyle("quote", fontName=FONT_BODY, fontSize=9.5, leading=14,
@@ -176,6 +178,10 @@ def build_story(md_text):
             continue
         if stripped.startswith("## "):
             story.append(Paragraph(inline_md(stripped[3:]), styles["h2"]))
+            i += 1
+            continue
+        if stripped.startswith("#### "):
+            story.append(Paragraph(inline_md(stripped[5:]), styles["h4"]))
             i += 1
             continue
         if stripped.startswith("### "):
