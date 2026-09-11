@@ -56,9 +56,73 @@ PAGE_W, PAGE_H = A4
 CONTENT_W = PAGE_W - 30 * mm
 
 
+# HYSMyeongJo-Medium(reportlab 내장 CID 폰트)에 글리프가 없는 문자들이 있다
+# (가운데점 U+00B7, 위첨자 +/- U+207A/U+207B 등은 빈칸으로 사라진다) — 실측 확인 후
+# 전부 이 폰트가 실제로 그릴 수 있는 문자/태그로 바꿔서 쓴다.
+_MIDDOT_SAFE = "\u318d"  # 가운데점 대체(한글 채움 아래아, 실측상 정상 렌더링됨)
+
+_LATEX_TEXT_CMD = re.compile(r"\\text\{([^}]*)\}")
+_LATEX_FRAC = re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}")
+_LATEX_UNDERBRACE = re.compile(r"\\underbrace\{([^{}]*)\}_\{([^{}]*)\}")
+_LATEX_MATHBB1 = re.compile(r"\\mathbb\{1\}")
+_LATEX_SIMPLE = [
+    (r"\\qquad", "    "),
+    (r"\\quad", "  "),
+    (r"\\,", " "),
+    (r"\\ ", " "),
+    (r"\\cdot", _MIDDOT_SAFE),
+    (r"\\times", "\u00d7"),
+    (r"\\geq", "\u2265"),
+    (r"\\leq", "\u2264"),
+    (r"\\neq", "\u2260"),
+    (r"\\approx", "\u2248"),
+    (r"\\sim", "~"),
+    (r"\\max", "max"),
+    (r"\\min", "min"),
+    (r"\\sum", "\u03a3"),
+    (r"\\big\(", "("),
+    (r"\\big\)", ")"),
+    (r"\\beta", "\u03b2"),
+    (r"\\pi", "\u03c0"),
+    (r"\\zeta", "\u03b6"),
+    (r"\\rho", "\u03c1"),
+    (r"\\alpha", "\u03b1"),
+    (r"\{=\}", "="),
+]
+
+# html.escape 이전에 임시 토큰으로 바꿔뒀다가, escape 이후 실제 <super> 태그로 되살린다
+# (< > 문자가 포함된 태그를 escape보다 먼저 넣으면 html.escape가 태그 자체를 깨버리기 때문)
+_SUP_PLUS_TOKEN = "\x01SUPPLUS\x01"
+_SUP_MINUS_TOKEN = "\x01SUPMINUS\x01"
+
+
+def latex_to_plain(text):
+    """$...$ / $$...$$ 로 감싼 LaTeX 수식을, PDF에 그대로 렌더링할 수 없으니
+    읽기 좋은 일반 텍스트로 최대한 변환한다(굵게/코드 처리보다 먼저 호출)."""
+    if "$" not in text:
+        return text
+    text = _LATEX_UNDERBRACE.sub(r"\1(\2)", text)
+    text = _LATEX_FRAC.sub(r"(\1)/(\2)", text)
+    text = _LATEX_TEXT_CMD.sub(r"\1", text)
+    text = _LATEX_MATHBB1.sub("\U0001d7d9", text)
+    for pat, rep in _LATEX_SIMPLE:
+        text = re.sub(pat, rep, text)
+    # y^+ / y^- 위첨자는 폰트에 글리프가 없어서, 나중에 <super> 태그로 되살릴 토큰만 심어둔다
+    text = text.replace("^+", _SUP_PLUS_TOKEN).replace("^-", _SUP_MINUS_TOKEN)
+    # 남은 LaTeX 그룹 중괄호 { } 는 그냥 벗겨낸다 (예: \rho_+ 의 _+ 는 그대로 둠)
+    text = text.replace("{", "").replace("}", "")
+    # $$...$$ / $...$ 구분자만 제거하고 내용은 그대로 살린다
+    text = text.replace("$$", "").replace("$", "")
+    return text
+
+
 def inline_md(text):
     """인라인 마크다운(굵게/코드/이미지 alt 등)을 reportlab 미니 XML로 변환"""
+    text = latex_to_plain(text)
+    text = text.replace("\u00b7", _MIDDOT_SAFE)  # 문서 전체의 가운데점(·)도 같은 이유로 교체
     text = html.escape(text, quote=False)
+    text = text.replace(_SUP_PLUS_TOKEN, "<super>+</super>")
+    text = text.replace(_SUP_MINUS_TOKEN, "<super>-</super>")
     text = re.sub(r"\*\*(.+?)\*\*", r'<font face="%s">\1</font>' % FONT_BOLD, text)
     text = re.sub(r"`([^`]+?)`", r'<font face="Courier" size="8.5" color="#a03030">\1</font>', text)
     return text
