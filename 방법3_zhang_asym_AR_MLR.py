@@ -1,26 +1,22 @@
 # -*- coding: utf-8 -*-
+
 # =====================================================================
-# integrated_spo_plus_4term_fig3568_AR_MLR.py
+# integrated_zhang_asym_fig3568_AR_MLR.py
 #
-# SPO+ (Smart Policy Optimization+) — 4항 이익식 + decomposition 방식
-# Elmachtoub & Grigas (2022) 프레임워크를 oracle normalization으로
-# decomposition하여 목적함수 계수로 구현.
+# Zhang et al. 비대칭 3항식 (rho_+ != rho_-) — AR + MLR 통합 실행
 #
-# 4항 이익식:
-#   profit = scale × (DA·x + RP·surplus − RP·shortage − PC·shortage)
-#   PC = rate × DA
+# 이익함수: DA*x + rho_-*surplus - rho_+*shortage
+#   rho_- = RT  (초과 시 하향조정가격)
+#   rho_+ = c*RT (부족 시 상향조정가격, c > 1)
+#   oracle: 3후보 {0, actual, 1.0}
 #
-# SPO+ decomposition:
-#   regret = Σ oracle_i · (optimal − ours) / Σoracle
-#   → 목적함수 계수 분해:
-#     sc_i = (−W1·scale·RT/denom) + W2/n       (surplus cost)
-#     yc_i = ( W1·scale·(RT+PC)/denom) + W2/n   (shortage cost, 4항)
-#   denom = Σ oracle_train ({0, actual, 1.0} 3후보)
-#
-# 보완성 제약: yp·ym = 0 (이진 변수 + big-M)
-#
-# AR(시간대별 12개 모델) + MLR(pooled 1개 모델) 통합 실행
-# 대상: z01/블럭21 (2013년 봄)
+# 데이터: merged_for_simulation_z03.csv (블록18)
+# 출력:
+#   - 전체 그리드 (c 5개 x W1/W2 10개 = 50조합, AR+MLR)
+#   - Best c 자동탐색
+#   - 논문 KPI 조건 (c=1.5, W1=1, W2=20) 별도 print
+#   - Fig.3(AR dual y), Fig.5(AR c 스윕),
+#     Fig.6(MLR dual y), Fig.8(MLR c 스윕)
 # =====================================================================
 
 import os
@@ -34,6 +30,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import csv
+
 
 # =====================================================================
 # 0. 한글 폰트 + matplotlib 스타일
@@ -49,18 +46,19 @@ if found_font_name:
 plt.rcParams["axes.unicode_minus"] = False
 
 # ── 일관된 색상 팔레트 ──
-C_AR_BASE   = "#4C72B0"   # AR baseline (파랑)
-C_AR_PROP   = "#55A868"   # AR 제안모형 (초록)
-C_MLR_BASE  = "#CC4654"   # MLR baseline (빨강)
-C_MLR_PROP  = "#8CAED6"   # MLR 제안모형 (연파랑)
-C_PAPER     = "#888888"   # 논문 참고값 (회색)
+C_AR_BASE   = "#4C72B0"   # AR 기준 (파랑)
+C_AR_PROP   = "#55A868"   # AR 제안 (초록)
+C_MLR_BASE  = "#CC4654"   # MLR 기준 (빨강)
+C_MLR_PROP  = "#8CAED6"   # MLR 제안 (연파랑)
+C_PAPER     = "#888888"   # 논문 참고 (회색)
 C_GRID      = "#DDDDDD"   # 그리드선
 
+
 # =====================================================================
-# 1. 설정 — z01/블럭21
+# 1. 설정 — z03/블록18
 # =====================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MERGED_FILE = os.path.join(BASE_DIR, "merged_for_simulation_z01.csv")
+MERGED_FILE = os.path.join(BASE_DIR, "merged_for_simulation_z03.csv")
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
 OUT_DIR = os.path.join(RESULTS_DIR, "simulation_output")
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -70,65 +68,58 @@ LOCAL_HOUR_START = 9
 LOCAL_HOUR_END = 21
 HOURS_PER_DAY = 12
 
-TRAIN_START = pd.Timestamp("2013-01-26")
-TRAIN_END = pd.Timestamp("2013-04-25")
-TEST_START  = pd.Timestamp("2013-04-26")
-TEST_END    = pd.Timestamp("2013-05-25")
-HISTORY_DATE = pd.Timestamp("2013-01-25")
+TRAIN_START = pd.Timestamp("2013-08-25")
+TRAIN_END = pd.Timestamp("2013-11-22")
+TEST_START = pd.Timestamp("2013-11-23")
+TEST_END = pd.Timestamp("2013-12-22")
+HISTORY_DATE = pd.Timestamp("2013-08-24")
 
 CAPACITY_MW = 30.0
 DURATION_HOURS = 1.0
 scale = CAPACITY_MW * DURATION_HOURS
 
 # ── 논문 KPI 조건 ──
+KPI_C = 1.5
 KPI_W1 = 1
 KPI_W2 = 20
-KPI_RATE = 0.5
 
 # ── 그리드 ──
-GRID_W_RATIOS = [(1, 20), (1, 10), (1, 5), (1, 1), (1, 0)]
-GRID_PENALTY_RATES = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5]
+W_RATIOS = [(1, 20), (1, 10), (1, 5), (1, 2), (1, 1),
+            (2, 1), (5, 1), (10, 1), (20, 1), (1, 0)]
+C_RATES = [1.0, 1.2, 1.5, 2.0, 3.0]
 
-# ── Fig3/6: W1/W2 10개점 ──
-FIG_W_RATIOS = [(1, 20), (1, 10), (1, 5), (1, 2), (1, 1),
-                (2, 1), (5, 1), (10, 1), (20, 1), (1, 0)]
+# ── Fig.3/6: W1/W2 라벨 (baseline 포함 11개점) ──
 FIG_LABELS = ["AR/MLR", "1/20", "1/10", "1/5", "1/2",
               "1/1", "2/1", "5/1", "10/1", "20/1", "1/0"]
 
-# ── Fig5/8: penalty rate 0~150% ──
-FIG_RATES = [round(0.1 * i, 1) for i in range(16)]
+# ── Fig.5/8: W1=W2=1 고정, c 11개점 스윕 ──
+FIG_C_W1, FIG_C_W2 = 1, 1
+FIG_C_VALUES = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0, 2.5, 3.0]
 
-# ── 논문 참고값 (z03/블록18 기준 — z01은 다른 블록이라 참고선일 뿐, 직접 비교 아님) ──
-PAPER_AR_NRMSE = 34.76
-PAPER_AR_GAP = 15.04
-PAPER_MLR_NRMSE = 21.76
-PAPER_MLR_GAP = 12.59
-# 논문 Table 3 (AR 제안모형, W1/W2 10개점)
-PAPER_PROP_NRMSE = [34.89, 35.14, 36.28, 41.09, 44.95,
-                    46.11, 48.27, 49.21, 49.61, 50.07]
-PAPER_PROP_GAP = [13.91, 13.42, 12.71, 11.88, 11.44,
-                  11.38, 11.38, 11.36, 11.36, 11.36]
-# 논문 Table 4 (MLR 제안모형, W1/W2 10개점) — AR과 다른 값
-PAPER_PROP_MLR_NRMSE = [21.92, 21.84, 21.75, 21.66, 22.01,
+# ── 논문 참고값 ──
+PAPER_AR_BASE_NRMSE = 34.76
+PAPER_AR_BASE_GAP = 15.04
+PAPER_MLR_BASE_NRMSE = 21.76
+PAPER_MLR_BASE_GAP = 12.59
+
+# AR 제안모형 W1/W2 스윕 논문값 (Fig.3)
+PAPER_AR_PROP_NRMSE = [34.89, 35.14, 36.28, 41.09, 44.95,
+                       46.11, 48.27, 49.21, 49.61, 50.07]
+PAPER_AR_PROP_GAP = [13.91, 13.42, 12.71, 11.88, 11.44,
+                     11.38, 11.38, 11.36, 11.36, 11.36]
+
+# MLR 제안모형 KPI (W1/W2=1/20) — 논문 Table 4
+PAPER_MLR_PROP_NRMSE_KPI = 21.92
+PAPER_MLR_PROP_GAP_KPI = 11.91
+# MLR 제안모형 W1/W2 스윕 논문값 (Table 4, Fig.6) — AR(Table 3)과 다른 값
+PAPER_MLR_PROP_NRMSE = [21.92, 21.84, 21.75, 21.66, 22.01,
                         23.32, 27.75, 30.62, 35.76, 37.67]
-PAPER_PROP_MLR_GAP = [11.91, 11.68, 11.15, 10.65, 10.28,
+PAPER_MLR_PROP_GAP = [11.91, 11.68, 11.15, 10.65, 10.28,
                       9.91, 9.51, 9.32, 9.27, 9.28]
-# 논문 원본 Fig.5(a)/(b) 육안 판독값 (AR, rate 0~100% 11개점) — 50%만 Table 3 실측치,
-# 나머지는 CodefromJiWon/model_proposed_ar_profit_change_v3.py의 판독값을 그대로 재사용
-FIG5_PAPER_AR_NRMSE   = [34.76] * 11
-FIG5_PAPER_AR_GAP     = [9, 11, 12, 13, 14, 15.04, 16, 18, 19, 20, 22]
-FIG5_PAPER_PROP_NRMSE = [46, 34, 35, 36, 40, 44.45, 50, 55, 61, 64, 67]
-FIG5_PAPER_PROP_GAP   = [8, 10, 11, 11, 11, 11.44, 11, 11.5, 11.5, 11.5, 11.5]
-# 논문 원본 Fig.8(a)/(b) 육안 판독값 (MLR, rate 0~100% 11개점) — 50%만 Table 4 실측치,
-# 나머지는 논문 PDF Fig.8(a)/(b) 그래프에서 직접 판독
-FIG8_PAPER_MLR_NRMSE  = [21.76] * 11
-FIG8_PAPER_PROP_NRMSE = [24.0, 22.5, 21.8, 21.3, 21.8, 22.01, 22.4, 23.0, 23.7, 25.0, 26.2]
-FIG8_PAPER_MLR_GAP    = [8.0, 8.9, 9.8, 10.7, 11.6, 12.59, 13.4, 14.3, 15.2, 16.1, 17.0]
-FIG8_PAPER_PROP_GAP   = [7.7, 9.2, 9.5, 10.0, 10.3, 10.28, 10.7, 10.9, 10.9, 11.0, 10.9]
 
 
 # =====================================================================
-# 2. 데이터 로딩
+# 2. 데이터 로딩 + 낮 시간대 필터
 # =====================================================================
 print("=" * 70)
 print("  1. 데이터 로딩")
@@ -195,7 +186,6 @@ actual_flat = test_rows["solar_power"].to_numpy()
 da_flat = test_rows["da_price"].to_numpy()
 rt_flat = test_rows["rt_price"].to_numpy()
 
-# MLR 입력행렬
 n_features_mlr = 4
 X_mlr_train = np.column_stack([np.ones(n_train_obs),
                                 mlr_train_dssrd, mlr_train_dtsr, mlr_train_hour])
@@ -205,7 +195,7 @@ X_mlr_test = np.column_stack([np.ones(n_test_obs),
                                test_rows["hour_idx"].to_numpy(dtype=float)])
 
 # ── AR용: 설계행렬(절편 + 직전 하루 12시간 lag 역순) ──
-n_features_ar = 13  # 1(intercept) + 12(lag)
+n_features_ar = 13
 history_and_train = np.vstack([history_solar, train_solar])
 n_ar_rows = n_train_days
 ar_intercept = np.ones((n_ar_rows, 1))
@@ -214,45 +204,62 @@ for d in range(n_ar_rows):
     ar_lag[d] = history_and_train[d][::-1]
 ar_design = np.hstack([ar_intercept, ar_lag])
 
-# ── 테스트 flat ──
+# ── 테스트 flat (AR용) ──
 actual_flat_all = test_solar.flatten()
 da_flat_all = test_da_price.flatten()
 rt_flat_all = test_rt_price.flatten()
-n_test_obs_all = len(actual_flat_all)
 
-print(f"  train: {n_train_days}일({n_train_obs}행), test: {n_test_days}일({n_test_obs}행)")
+print(f"  학습: {n_train_days}일({n_train_obs}행), 테스트: {n_test_days}일({n_test_obs}행)")
 
 
 # =====================================================================
-# 3. Gap 계산 함수 — 4항식, oracle 3후보 {0, actual, 1.0}
+# 3. Gap / nRMSE 계산 함수 — Zhang 3항
 # =====================================================================
-def compute_gap_4term(pred_flat, penalty_rate, actual, da, rt):
-    """4항 이익함수 optimality gap 계산 (oracle: {0, actual, 1.0})"""
+def compute_zhang_gap(pred_flat, c_rate, actual, da, rt):
+    """Zhang 3항 이익함수 optimality gap (oracle: {0, actual, 1.0})"""
     sum_realized = 0.0
     sum_oracle = 0.0
     for i in range(len(pred_flat)):
         a = actual[i]; x = pred_flat[i]
         dp = da[i]; rp = rt[i]
-        pc = penalty_rate * dp
+        rho_plus = c_rate * rp
+        rho_minus = rp
+
         mismatch = a - x
         surplus = max(mismatch, 0)
         shortage = max(-mismatch, 0)
-        # 4항: DA*x + RP*surplus - RP*shortage - PC*shortage
-        realized = scale * (dp * x + rp * surplus - rp * shortage - pc * shortage)
+        realized = scale * (dp * x + rho_minus * surplus - rho_plus * shortage)
         sum_realized += realized
-        # oracle 후보
-        p0 = scale * rp * a  # commit=0: surplus=a → RP*a
-        pa = scale * dp * a  # commit=actual: DA*a
+
+        p0 = scale * rho_minus * a
+        pa = scale * dp * a
         s1 = max(a - 1.0, 0); y1 = max(1.0 - a, 0)
-        p1 = scale * (dp * 1.0 + rp * s1 - rp * y1 - pc * y1)  # commit=1
+        p1 = scale * (dp * 1.0 + rho_minus * s1 - rho_plus * y1)
         oracle = max(p0, pa, p1)
         sum_oracle += oracle
+
     return 100.0 * (sum_oracle - sum_realized) / sum_oracle if sum_oracle > 1e-10 else 0.0
 
 
 def calc_nrmse(pred_flat, actual):
     rmse = np.sqrt(np.mean((actual - pred_flat) ** 2))
     return 100.0 * rmse / np.mean(actual)
+
+
+def auto_ylim(*series, pad_frac=0.12, round_to=5, floor_at_zero=True):
+    """그림마다 실제로 그려지는 값들의 범위에 맞춰 y축을 정한다 (고정된 30~80/0~25 대신)."""
+    vals = []
+    for s in series:
+        vals.extend([v for v in s if v is not None])
+    lo, hi = min(vals), max(vals)
+    span = hi - lo
+    pad = span * pad_frac if span > 0 else max(hi * 0.1, round_to)
+    lo -= pad; hi += pad
+    lo = round_to * np.floor(lo / round_to)
+    hi = round_to * np.ceil(hi / round_to)
+    if floor_at_zero:
+        lo = max(lo, 0)
+    return float(lo), float(hi)
 
 
 # =====================================================================
@@ -274,7 +281,6 @@ for h in range(HOURS_PER_DAY):
     res = linprog(c, A_ub=A, b_ub=b, bounds=vb, method="highs")
     ar_coefficients[h] = res.x[:n_features_ar]
 
-# AR 예측 (rolling)
 ar_test_forecast = np.zeros((n_test_days, HOURS_PER_DAY))
 prev_day = train_solar[-1]
 for d in range(n_test_days):
@@ -310,24 +316,10 @@ print(f"  MLR baseline nRMSE = {mlr_nrmse:.2f}%")
 
 
 # =====================================================================
-# 6. SPO+ MILP — AR (시간대별, 4항 decomposition 방식)
-#
-# SPO+ regret를 oracle normalization으로 decomposition:
-#   regret = Σ oracle_i · (optimal_decision − our_decision) / Σoracle
-#          → 목적함수 계수로 분해
-#
-# realized / scale = DA*x + RP*yp − (RP+PC)*ym
-#   (yp: surplus, ym: shortage, 분해 제약 x + yp − ym = a)
-#
-# 목적: min Σ[ −W1·scale·DA·x/denom + sc·yp + yc·ym ]
-#   sc_i = (−W1·scale·RT/denom) + W2/n   (surplus cost)
-#   yc_i = ( W1·scale·(RT+PC)/denom) + W2/n   (shortage cost, 4항)
-#   denom = Σ oracle_train ({0, actual, 1.0} 3후보)
-#
-# 보완성 제약: yp·ym = 0 (이진 변수 + big-M)
+# 6. 제안모형 MILP — AR (시간대별, Zhang 3항)
 # =====================================================================
-def solve_ar_spo_plus(penalty_rate, W1, W2):
-    """AR SPO+: 4항 이익식 + oracle normalization decomposition"""
+def solve_ar_proposed(c_rate, W1, W2):
+    """AR 제안모형: Zhang 3항, 12시간대별 MILP 풀기"""
     coeffs = np.zeros((HOURS_PER_DAY, n_features_ar))
 
     for hour in range(HOURS_PER_DAY):
@@ -336,26 +328,28 @@ def solve_ar_spo_plus(penalty_rate, W1, W2):
         rt_h = train_rt_price[:, hour]
         n_obs = n_ar_rows
 
-        # training oracle (3후보: {0, actual, 1.0})
+        rho_plus_h = c_rate * rt_h
+        rho_minus_h = rt_h
+
+        # 학습용 오라클: 3후보 {0, actual, 1.0}
         oracle_train = np.zeros(n_obs)
         for i in range(n_obs):
-            a = y_h[i]; dp = da_h[i]; rp = rt_h[i]
-            pc = penalty_rate * dp
-            p0 = scale * rp * a; pa = scale * dp * a
+            a = y_h[i]; dp = da_h[i]
+            r_p = rho_plus_h[i]; r_m = rho_minus_h[i]
+            p0 = scale * r_m * a; pa = scale * dp * a
             s1 = max(a - 1.0, 0); y1 = max(1.0 - a, 0)
-            p1 = scale * (dp * 1.0 + rp * s1 - rp * y1 - pc * y1)
+            p1 = scale * (dp * 1.0 + r_m * s1 - r_p * y1)
             oracle_train[i] = max(p0, pa, p1)
         denom = oracle_train.sum()
 
-        # 목적함수 계수 (4항)
+        # 목적함수 계수
         sc = np.zeros(n_obs)  # surplus cost
         yc = np.zeros(n_obs)  # shortage cost
         for i in range(n_obs):
-            pc = penalty_rate * da_h[i]
-            sc[i] = (-W1 * scale * rt_h[i] / denom) + (W2 / n_obs)
-            yc[i] = (W1 * scale * (rt_h[i] + pc) / denom) + (W2 / n_obs)
+            sc[i] = (-W1 * scale * rho_minus_h[i] / denom) + (W2 / n_obs)
+            yc[i] = (W1 * scale * rho_plus_h[i] / denom) + (W2 / n_obs)
 
-        # 이진변수: sc+yc < 0 인 관측치만 보완성 제약 필요
+        # 이진변수
         bin_list = [i for i in range(n_obs) if sc[i] + yc[i] < 0]
         bin_arr = np.array(bin_list, dtype=int)
         n_bin = len(bin_arr)
@@ -398,8 +392,8 @@ def solve_ar_spo_plus(penalty_rate, W1, W2):
         r = milp(c=obj, integrality=integ, bounds=Bounds(lb, ub),
                  constraints=all_con, options={"mip_rel_gap": 1e-9})
         if not r.success:
-            print(f"  AR MILP 실패 h={hour}: {r.message}")
-            coeffs[hour] = 0.0
+            print(f"    ⚠ AR MILP 실패 h={hour}: {r.message} — baseline 계수 사용")
+            coeffs[hour] = ar_coefficients[hour]
         else:
             coeffs[hour] = r.x[b_s:b_s+n_features_ar]
 
@@ -415,27 +409,30 @@ def solve_ar_spo_plus(penalty_rate, W1, W2):
 
 
 # =====================================================================
-# 7. SPO+ MILP — MLR (pooled, 4항 decomposition 방식)
+# 7. 제안모형 MILP — MLR (pooled, Zhang 3항)
 # =====================================================================
-def solve_mlr_spo_plus(penalty_rate, W1, W2):
-    """MLR SPO+: 4항 이익식 + oracle normalization decomposition"""
+def solve_mlr_proposed(c_rate, W1, W2):
+    """MLR 제안모형: Zhang 3항, pooled MILP 하나만 풀기"""
     n_obs = n_train_obs
 
+    rho_plus = c_rate * mlr_train_rt
+    rho_minus = mlr_train_rt
+
+    # 학습용 오라클: 3후보 {0, actual, 1.0}
     oracle_train = np.zeros(n_obs)
     for i in range(n_obs):
-        a = mlr_train_solar[i]; dp = mlr_train_da[i]; rp = mlr_train_rt[i]
-        pc = penalty_rate * dp
-        p0 = scale * rp * a; pa = scale * dp * a
+        a = mlr_train_solar[i]; dp = mlr_train_da[i]
+        r_p = rho_plus[i]; r_m = rho_minus[i]
+        p0 = scale * r_m * a; pa = scale * dp * a
         s1 = max(a - 1.0, 0); y1 = max(1.0 - a, 0)
-        p1 = scale * (dp * 1.0 + rp * s1 - rp * y1 - pc * y1)
+        p1 = scale * (dp * 1.0 + r_m * s1 - r_p * y1)
         oracle_train[i] = max(p0, pa, p1)
     denom = oracle_train.sum()
 
     sc = np.zeros(n_obs); yc = np.zeros(n_obs)
     for i in range(n_obs):
-        pc = penalty_rate * mlr_train_da[i]
-        sc[i] = (-W1 * scale * mlr_train_rt[i] / denom) + (W2 / n_obs)
-        yc[i] = (W1 * scale * (mlr_train_rt[i] + pc) / denom) + (W2 / n_obs)
+        sc[i] = (-W1 * scale * rho_minus[i] / denom) + (W2 / n_obs)
+        yc[i] = (W1 * scale * rho_plus[i] / denom) + (W2 / n_obs)
 
     bin_list = [i for i in range(n_obs) if sc[i] + yc[i] < 0]
     bin_arr = np.array(bin_list, dtype=int)
@@ -479,8 +476,10 @@ def solve_mlr_spo_plus(penalty_rate, W1, W2):
     r = milp(c=obj, integrality=integ, bounds=Bounds(lb, ub),
              constraints=all_con, options={"mip_rel_gap": 1e-9})
     if not r.success:
-        raise RuntimeError(f"MLR SPO+ MILP 실패: {r.message}")
-    coeffs = r.x[b_s:b_s+n_features_mlr]
+        print(f"    ⚠ MLR MILP 실패: {r.message} — baseline 계수 사용")
+        coeffs = mlr_coefficients
+    else:
+        coeffs = r.x[b_s:b_s+n_features_mlr]
     return np.clip(X_mlr_test @ coeffs, 0, 1)
 
 
@@ -490,97 +489,167 @@ def solve_mlr_spo_plus(penalty_rate, W1, W2):
 cache_ar = {}
 cache_mlr = {}
 
-def get_ar(pr, w1, w2):
-    k = (pr, w1, w2)
+def get_ar(cr, w1, w2):
+    k = (cr, w1, w2)
     if k not in cache_ar:
-        pred = solve_ar_spo_plus(pr, w1, w2)
+        pred = solve_ar_proposed(cr, w1, w2)
         cache_ar[k] = (calc_nrmse(pred, actual_flat_all),
-                       compute_gap_4term(pred, pr, actual_flat_all, da_flat_all, rt_flat_all))
+                       compute_zhang_gap(pred, cr, actual_flat_all, da_flat_all, rt_flat_all))
     return cache_ar[k]
 
-def get_mlr(pr, w1, w2):
-    k = (pr, w1, w2)
+def get_mlr(cr, w1, w2):
+    k = (cr, w1, w2)
     if k not in cache_mlr:
-        pred = solve_mlr_spo_plus(pr, w1, w2)
+        pred = solve_mlr_proposed(cr, w1, w2)
         cache_mlr[k] = (calc_nrmse(pred, actual_flat),
-                        compute_gap_4term(pred, pr, actual_flat, da_flat, rt_flat))
+                        compute_zhang_gap(pred, cr, actual_flat, da_flat, rt_flat))
     return cache_mlr[k]
 
 
 # =====================================================================
-# 9. 전체 그리드 스윕 (50조합) — AR + MLR
+# 9. 전체 그리드 스윕 (c 5개 x W1/W2 10개 = 50조합, AR+MLR)
 # =====================================================================
 print("\n" + "=" * 70)
-print("  4. 그리드 스윕 (rate 10개 x W1/W2 5개 = 50조합, SPO+ AR+MLR)")
+print("  4. 그리드 스윕 (c 5개 x W1/W2 10개 = 50조합, AR+MLR)")
 print("=" * 70)
 
-grid_results = []  # (rate, W1, W2, ar_nrmse, ar_gap, mlr_nrmse, mlr_gap)
+all_results = []
 
-for pr in GRID_PENALTY_RATES:
-    print(f"\n  ── rate = {pr} ──")
-    for W1, W2 in GRID_W_RATIOS:
-        a_n, a_g = get_ar(pr, W1, W2)
-        m_n, m_g = get_mlr(pr, W1, W2)
-        grid_results.append((pr, W1, W2, a_n, a_g, m_n, m_g))
+for c_rate in C_RATES:
+    print(f"\n{'=' * 60}")
+    print(f"  c = {c_rate}  (rho_plus = {c_rate}*RT, rho_minus = RT)")
+    print(f"{'=' * 60}")
+
+    for widx, (W1, W2) in enumerate(W_RATIOS):
+        a_n, a_g = get_ar(c_rate, W1, W2)
+        m_n, m_g = get_mlr(c_rate, W1, W2)
         label = f"{W1}/{W2}"
+        all_results.append((c_rate, label, W1, W2, a_n, a_g, m_n, m_g))
         print(f"  {label}: AR(nRMSE={a_n:.2f}%, Gap={a_g:.2f}%) "
-              f"MLR(nRMSE={m_n:.2f}%, Gap={m_g:.2f}%)")
+              f"MLR(nRMSE={m_n:.2f}%, Gap={m_g:.2f}%) "
+              f"(논문: nRMSE={PAPER_AR_PROP_NRMSE[widx]:.2f}%, Gap={PAPER_AR_PROP_GAP[widx]:.2f}%)")
+
+print("\n" + "=" * 110)
+print(f"{'c':>4} {'Label':>6} {'W1':>4} {'W2':>4} "
+      f"{'AR nRMSE':>10} {'AR Gap':>10} "
+      f"{'MLR nRMSE':>10} {'MLR Gap':>10}")
+print("-" * 110)
+for c_rate, label, W1, W2, a_n, a_g, m_n, m_g in all_results:
+    print(f"{c_rate:>4} {label:>6} {W1:>4} {W2:>4} "
+          f"{a_n:>9.2f}% {a_g:>9.2f}% "
+          f"{m_n:>9.2f}% {m_g:>9.2f}%")
+print("=" * 110)
+
+# baseline Gap
+print(f"\n  baseline Gap (c별):")
+for c_rate in C_RATES:
+    ar_g = compute_zhang_gap(ar_pred_flat, c_rate,
+                             actual_flat_all, da_flat_all, rt_flat_all)
+    mlr_g = compute_zhang_gap(mlr_pred_flat, c_rate,
+                              actual_flat, da_flat, rt_flat)
+    print(f"  c={c_rate}: AR Gap={ar_g:.2f}% (논문 {PAPER_AR_BASE_GAP}%), "
+          f"MLR Gap={mlr_g:.2f}% (논문 {PAPER_MLR_BASE_GAP}%)")
 
 # 그리드 CSV
-grid_csv = os.path.join(OUT_DIR, "grid_spo_plus_4term_ar_mlr_z01_block21.csv")
+grid_csv = os.path.join(OUT_DIR, "grid_zhang_asym_3term_ar_mlr.csv")
 with open(grid_csv, "w", newline="") as f:
     w = csv.writer(f)
-    w.writerow(["rate", "W1", "W2",
-                "AR_nRMSE", "AR_Gap", "MLR_nRMSE", "MLR_Gap"])
-    for row in grid_results:
-        w.writerow([row[0], row[1], row[2],
-                     round(row[3], 2), round(row[4], 2),
-                     round(row[5], 2), round(row[6], 2)])
-print(f"\n  saved: {grid_csv}")
+    w.writerow(["c_rate", "Label", "W1", "W2",
+                "AR_nRMSE", "AR_Gap", "MLR_nRMSE", "MLR_Gap",
+                "Paper_nRMSE", "Paper_Gap"])
+    for c_rate, label, W1, W2, a_n, a_g, m_n, m_g in all_results:
+        idx = W_RATIOS.index((W1, W2))
+        w.writerow([c_rate, label, W1, W2,
+                     round(a_n, 2), round(a_g, 2),
+                     round(m_n, 2), round(m_g, 2),
+                     PAPER_AR_PROP_NRMSE[idx], PAPER_AR_PROP_GAP[idx]])
+print(f"\n  저장: {grid_csv}")
 
 
 # =====================================================================
-# 10. 논문 KPI 조건 (W1=1, W2=20, rate=50%) 별도 출력
+# 10. 논문 KPI 조건 (c=1.5, W1=1, W2=20) 별도 출력
 # =====================================================================
 print("\n" + "=" * 70)
-print(f"  5. 논문 KPI 조건 — W1={KPI_W1}, W2={KPI_W2}, penalty rate={KPI_RATE} (50%)")
+print(f"  5. 논문 KPI 조건 — c={KPI_C}, W1={KPI_W1}, W2={KPI_W2}")
 print("=" * 70)
 
-ar_kpi_n, ar_kpi_g = get_ar(KPI_RATE, KPI_W1, KPI_W2)
-mlr_kpi_n, mlr_kpi_g = get_mlr(KPI_RATE, KPI_W1, KPI_W2)
+ar_kpi_n, ar_kpi_g = get_ar(KPI_C, KPI_W1, KPI_W2)
+mlr_kpi_n, mlr_kpi_g = get_mlr(KPI_C, KPI_W1, KPI_W2)
+ar_kpi_gap_base = compute_zhang_gap(ar_pred_flat, KPI_C,
+                                     actual_flat_all, da_flat_all, rt_flat_all)
+mlr_kpi_gap_base = compute_zhang_gap(mlr_pred_flat, KPI_C,
+                                      actual_flat, da_flat, rt_flat)
+
+kpi_idx = W_RATIOS.index((KPI_W1, KPI_W2))
+
 print(f"""
+
   ┌──────────────────┬──────────────┬──────────────┬──────────────┬──────────────┐
   │     모델          │  nRMSE (%)   │  Gap (%)     │  nRMSE (%)   │  Gap (%)     │
-  │                  │  (제안모형)   │  (제안모형)   │  (논문 기준)  │  (논문 기준)  │
+  │                  │  (제안모형)   │  (제안모형)   │  (baseline)  │  (baseline)  │
   ├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
-  │  AR (z01/블럭21)  │ {ar_kpi_n:>10.2f}   │ {ar_kpi_g:>10.2f}   │ {PAPER_AR_NRMSE:>10.2f}   │ {PAPER_AR_GAP:>10.2f}   │
-  │  MLR (z01/블럭21) │ {mlr_kpi_n:>10.2f}   │ {mlr_kpi_g:>10.2f}   │ {PAPER_MLR_NRMSE:>10.2f}   │ {PAPER_MLR_GAP:>10.2f}   │
+  │  AR              │ {ar_kpi_n:>10.2f}   │ {ar_kpi_g:>10.2f}   │ {ar_nrmse:>10.2f}   │ {ar_kpi_gap_base:>10.2f}   │
+  │  MLR             │ {mlr_kpi_n:>10.2f}   │ {mlr_kpi_g:>10.2f}   │ {mlr_nrmse:>10.2f}   │ {mlr_kpi_gap_base:>10.2f}   │
   └──────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
 
-  ※ 논문 KPI 기준값 (z03/블록18):
-      AR  nRMSE={PAPER_AR_NRMSE}%, Gap={PAPER_AR_GAP}%
-      MLR nRMSE={PAPER_MLR_NRMSE}%, Gap={PAPER_MLR_GAP}%
+  ※ 논문 KPI 기준값 (W1/W2=1/20 지점):
+      AR  제안모형: nRMSE={PAPER_AR_PROP_NRMSE[kpi_idx]}%, Gap={PAPER_AR_PROP_GAP[kpi_idx]}%
+      MLR 제안모형: nRMSE={PAPER_MLR_PROP_NRMSE_KPI}%, Gap={PAPER_MLR_PROP_GAP_KPI}%
+      (baseline) AR  nRMSE={PAPER_AR_BASE_NRMSE}%, Gap={PAPER_AR_BASE_GAP}%
+      (baseline) MLR nRMSE={PAPER_MLR_BASE_NRMSE}%, Gap={PAPER_MLR_BASE_GAP}%
+
+  ┌──────────────────┬──────────────┬──────────────┬──────────────┬──────────────┐
+  │     모델          │  Δ nRMSE     │  Δ Gap       │  Δ nRMSE     │  Δ Gap       │
+  │                  │  (제안모형)   │  (제안모형)   │  (baseline)  │  (baseline)  │
+  ├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+  │  AR              │ {ar_kpi_n-PAPER_AR_PROP_NRMSE[kpi_idx]:>+10.2f}%p │ {ar_kpi_g-PAPER_AR_PROP_GAP[kpi_idx]:>+10.2f}%p │ {ar_nrmse-PAPER_AR_BASE_NRMSE:+>10.2f}%p │ {ar_kpi_gap_base-PAPER_AR_BASE_GAP:+>10.2f}%p │
+  │  MLR             │ {mlr_kpi_n-PAPER_MLR_PROP_NRMSE_KPI:+>10.2f}%p │ {mlr_kpi_g-PAPER_MLR_PROP_GAP_KPI:+>10.2f}%p │ {mlr_nrmse-PAPER_MLR_BASE_NRMSE:+>10.2f}%p │ {mlr_kpi_gap_base-PAPER_MLR_BASE_GAP:+>10.2f}%p │
+  └──────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
 """)
 
 
 # =====================================================================
-# 11. Fig.3/6 데이터 — W1/W2 10개점 스윕 (rate=0.5 고정)
+# 11. Best c 자동탐색 (|ΔnRMSE|+|ΔGap| 최소, AR+MLR 평균)
 # =====================================================================
-FIG36_RATE = KPI_RATE  # 0.5
+best_total_err = np.inf
+best_combo = None
+for c_rate, label, W1, W2, a_n, a_g, m_n, m_g in all_results:
+    idx = W_RATIOS.index((W1, W2))
+    ar_err = abs(a_n - PAPER_AR_PROP_NRMSE[idx]) + abs(a_g - PAPER_AR_PROP_GAP[idx])
+    mlr_err = abs(m_n - PAPER_AR_PROP_NRMSE[idx]) + abs(m_g - PAPER_AR_PROP_GAP[idx])
+    err = (ar_err + mlr_err) / 2
+    if err < best_total_err:
+        best_total_err = err
+        best_combo = (c_rate, label, a_n, a_g, m_n, m_g, idx)
+
+BEST_C = best_combo[0]
+print(f"\n  Best match: c={BEST_C}, W1/W2={best_combo[1]}")
+print(f"  AR  (nRMSE={best_combo[2]:.2f}%, Gap={best_combo[3]:.2f}%, "
+      f"ΔnRMSE={best_combo[2]-PAPER_AR_PROP_NRMSE[best_combo[6]]:+.2f}%p, "
+      f"ΔGap={best_combo[3]-PAPER_AR_PROP_GAP[best_combo[6]]:+.2f}%p)")
+print(f"  MLR (nRMSE={best_combo[4]:.2f}%, Gap={best_combo[5]:.2f}%, "
+      f"ΔnRMSE={best_combo[4]-PAPER_AR_PROP_NRMSE[best_combo[6]]:+.2f}%p, "
+      f"ΔGap={best_combo[5]-PAPER_AR_PROP_GAP[best_combo[6]]:+.2f}%p)")
+print(f"  -> Fig.3/Fig.5 (AR), Fig.6/Fig.8 (MLR) 에서 이 c를 그대로 씀")
+
+
+# =====================================================================
+# 12. Fig.3 (AR, W1/W2 스윕) + Fig.6 (MLR, W1/W2 스윕) 데이터
+# =====================================================================
 print("\n" + "=" * 70)
-print(f"  6. Fig.3/6 데이터 — W1/W2 10개점 스윕 (rate={FIG36_RATE})")
+print(f"  6. Fig.3/6 데이터 — W1/W2 10개점 스윕 (c={BEST_C})")
 print("=" * 70)
 
 fig3_ar_n = [ar_nrmse]
-fig3_ar_g = [compute_gap_4term(ar_pred_flat, FIG36_RATE,
+fig3_ar_g = [compute_zhang_gap(ar_pred_flat, BEST_C,
                                 actual_flat_all, da_flat_all, rt_flat_all)]
 fig6_mlr_n = [mlr_nrmse]
-fig6_mlr_g = [compute_gap_4term(mlr_pred_flat, FIG36_RATE,
+fig6_mlr_g = [compute_zhang_gap(mlr_pred_flat, BEST_C,
                                  actual_flat, da_flat, rt_flat)]
 
-for W1, W2 in FIG_W_RATIOS:
-    a_n, a_g = get_ar(FIG36_RATE, W1, W2)
-    m_n, m_g = get_mlr(FIG36_RATE, W1, W2)
+for W1, W2 in W_RATIOS:
+    a_n, a_g = get_ar(BEST_C, W1, W2)
+    m_n, m_g = get_mlr(BEST_C, W1, W2)
     fig3_ar_n.append(a_n); fig3_ar_g.append(a_g)
     fig6_mlr_n.append(m_n); fig6_mlr_g.append(m_g)
     print(f"  {W1}/{W2}: AR(nRMSE={a_n:.2f}%, Gap={a_g:.2f}%) "
@@ -588,258 +657,254 @@ for W1, W2 in FIG_W_RATIOS:
 
 
 # =====================================================================
-# 12. Fig.5/8 데이터 — rate 0~150% 스윕 (W1=W2=1)
+# 13. Fig.5 (AR, c 스윕) + Fig.8 (MLR, c 스윕) 데이터
+#     W1=W2=1 고정, c 11개점
 # =====================================================================
 print("\n" + "=" * 70)
-print(f"  7. Fig.5/8 데이터 — rate 0~150% 스윕 (W1=W2=1)")
+print(f"  7. Fig.5/8 데이터 — c 11개점 스윕 (W1/W2={FIG_C_W1}/{FIG_C_W2})")
 print("=" * 70)
 
 fig5_ar_n_list = []; fig5_ar_g_list = []
-fig8_mlr_n_list = []; fig8_mlr_g_list = []
 fig5_ar_prop_n = []; fig5_ar_prop_g = []
+fig8_mlr_n_list = []; fig8_mlr_g_list = []
 fig8_mlr_prop_n = []; fig8_mlr_prop_g = []
 
-for rate in FIG_RATES:
-    ar_g_r = compute_gap_4term(ar_pred_flat, rate,
-                                actual_flat_all, da_flat_all, rt_flat_all)
-    mlr_g_r = compute_gap_4term(mlr_pred_flat, rate,
-                                 actual_flat, da_flat, rt_flat)
+for c_val in FIG_C_VALUES:
+    ar_g_r = compute_zhang_gap(ar_pred_flat, c_val,
+                               actual_flat_all, da_flat_all, rt_flat_all)
     fig5_ar_n_list.append(ar_nrmse); fig5_ar_g_list.append(ar_g_r)
+
+    mlr_g_r = compute_zhang_gap(mlr_pred_flat, c_val,
+                                actual_flat, da_flat, rt_flat)
     fig8_mlr_n_list.append(mlr_nrmse); fig8_mlr_g_list.append(mlr_g_r)
 
-    a_n, a_g = get_ar(rate, 1, 1)
-    m_n, m_g = get_mlr(rate, 1, 1)
+    a_n, a_g = get_ar(c_val, FIG_C_W1, FIG_C_W2)
+    m_n, m_g = get_mlr(c_val, FIG_C_W1, FIG_C_W2)
     fig5_ar_prop_n.append(a_n); fig5_ar_prop_g.append(a_g)
     fig8_mlr_prop_n.append(m_n); fig8_mlr_prop_g.append(m_g)
 
-    print(f"  rate={rate:.1f}: "
+    print(f"  c={c_val:.1f}: "
           f"AR(base={ar_g_r:.2f}%, prop={a_n:.2f}%/{a_g:.2f}%) "
           f"MLR(base={mlr_g_r:.2f}%, prop={m_n:.2f}%/{m_g:.2f}%)")
 
 
 # =====================================================================
-# 13. CSV 저장
+# 14. CSV 저장
 # =====================================================================
 def save_csv(path, header, rows):
     with open(path, "w", newline="") as f:
         csv.writer(f).writerow(header)
         for row in rows:
             csv.writer(f).writerow(row)
-    print(f"  saved: {path}")
+    print(f"  저장: {path}")
 
-save_csv(os.path.join(OUT_DIR, "fig3_spo_plus_4term_AR.csv"),
-         ["Label", "nRMSE", "Gap"],
-         [[FIG_LABELS[i], round(fig3_ar_n[i], 2), round(fig3_ar_g[i], 2)]
+paper_ar_nrmse_all = [PAPER_AR_BASE_NRMSE] + PAPER_AR_PROP_NRMSE
+paper_ar_gap_all = [PAPER_AR_BASE_GAP] + PAPER_AR_PROP_GAP
+paper_mlr_nrmse_all = [PAPER_MLR_BASE_NRMSE] + PAPER_MLR_PROP_NRMSE
+paper_mlr_gap_all = [PAPER_MLR_BASE_GAP] + PAPER_MLR_PROP_GAP
+
+save_csv(os.path.join(OUT_DIR, "fig3_zhang_asym_AR.csv"),
+         ["Label", "nRMSE", "Gap", "Paper_nRMSE", "Paper_Gap"],
+         [[FIG_LABELS[i], round(fig3_ar_n[i], 2), round(fig3_ar_g[i], 2),
+           paper_ar_nrmse_all[i], paper_ar_gap_all[i]]
           for i in range(len(FIG_LABELS))])
 
-save_csv(os.path.join(OUT_DIR, "fig5_spo_plus_4term_AR.csv"),
-         ["Rate", "AR_base_nRMSE", "AR_base_Gap", "AR_prop_nRMSE", "AR_prop_Gap"],
-         [[FIG_RATES[i], round(fig5_ar_n_list[i], 2), round(fig5_ar_g_list[i], 2),
+save_csv(os.path.join(OUT_DIR, "fig5_zhang_asym_c_AR.csv"),
+         ["c", "AR_base_nRMSE", "AR_base_Gap", "AR_prop_nRMSE", "AR_prop_Gap"],
+         [[FIG_C_VALUES[i], round(fig5_ar_n_list[i], 2), round(fig5_ar_g_list[i], 2),
            round(fig5_ar_prop_n[i], 2), round(fig5_ar_prop_g[i], 2)]
-          for i in range(len(FIG_RATES))])
+          for i in range(len(FIG_C_VALUES))])
 
-save_csv(os.path.join(OUT_DIR, "fig6_spo_plus_4term_MLR.csv"),
-         ["Label", "nRMSE", "Gap"],
-         [[FIG_LABELS[i], round(fig6_mlr_n[i], 2), round(fig6_mlr_g[i], 2)]
+save_csv(os.path.join(OUT_DIR, "fig6_zhang_asym_MLR.csv"),
+         ["Label", "nRMSE", "Gap", "Paper_nRMSE", "Paper_Gap"],
+         [[FIG_LABELS[i], round(fig6_mlr_n[i], 2), round(fig6_mlr_g[i], 2),
+           paper_mlr_nrmse_all[i], paper_mlr_gap_all[i]]
           for i in range(len(FIG_LABELS))])
 
-save_csv(os.path.join(OUT_DIR, "fig8_spo_plus_4term_MLR.csv"),
-         ["Rate", "MLR_base_nRMSE", "MLR_base_Gap", "MLR_prop_nRMSE", "MLR_prop_Gap"],
-         [[FIG_RATES[i], round(fig8_mlr_n_list[i], 2), round(fig8_mlr_g_list[i], 2),
+save_csv(os.path.join(OUT_DIR, "fig8_zhang_asym_c_MLR.csv"),
+         ["c", "MLR_base_nRMSE", "MLR_base_Gap", "MLR_prop_nRMSE", "MLR_prop_Gap"],
+         [[FIG_C_VALUES[i], round(fig8_mlr_n_list[i], 2), round(fig8_mlr_g_list[i], 2),
            round(fig8_mlr_prop_n[i], 2), round(fig8_mlr_prop_g[i], 2)]
-          for i in range(len(FIG_RATES))])
+          for i in range(len(FIG_C_VALUES))])
 
 
 # =====================================================================
-# 14. Fig.3 — AR, dual y축 (nRMSE 좌, Gap 우)
+# 15. Fig.3 — AR, dual y축 (nRMSE 좌, Gap 우)
 # =====================================================================
 print("\n" + "=" * 70)
-print("  8. Fig.3 plotting (AR, W1/W2 스윕, dual y축)")
+print("  8. Fig.3 그리기 (AR, W1/W2 스윕, dual y축)")
 print("=" * 70)
 
 x = list(range(len(FIG_LABELS)))
+
 fig, ax_l = plt.subplots(figsize=(10, 6))
-fig.suptitle(f"Fig.3 — AR SPO+ 4항식, rate={FIG36_RATE}, W1/W2 스윕", fontsize=13)
+fig.suptitle(f"방법3_fig3 — AR Zhang 비대칭(rho_+=c×RT), c={BEST_C}, W1/W2 스윕", fontsize=13)
 ax_r = ax_l.twinx()
 
-paper_nrmse_all = [PAPER_AR_NRMSE] + PAPER_PROP_NRMSE
-paper_gap_all = [PAPER_AR_GAP] + PAPER_PROP_GAP
-ln1 = ax_l.plot(x, paper_nrmse_all, marker="o", color=C_PAPER,
-                linewidth=2, linestyle=":", label="논문 nRMSE", alpha=0.8)
-ln2 = ax_l.plot(x, fig3_ar_n,   marker="s", color=C_AR_PROP,
+ln1 = ax_l.plot(x, paper_ar_nrmse_all, marker="o", color=C_PAPER,
+                linestyle=":", label="논문 nRMSE", alpha=0.7)
+ln2 = ax_l.plot(x, fig3_ar_n,   marker="o", color=C_AR_BASE,
                 linewidth=2, linestyle="-", label="재현 nRMSE")
-ln3 = ax_r.plot(x, paper_gap_all, marker="^", color=C_PAPER,
-                linewidth=2, linestyle=":", label="논문 Gap", alpha=0.8)
-ln4 = ax_r.plot(x, fig3_ar_g,   marker="d", color=C_AR_BASE,
+ln3 = ax_r.plot(x, paper_ar_gap_all, marker="s", color=C_PAPER,
+                linestyle=":", label="논문 Gap", alpha=0.7)
+ln4 = ax_r.plot(x, fig3_ar_g,   marker="s", color=C_AR_PROP,
                 linewidth=2, linestyle="-", label="재현 Gap")
 
 ax_l.set_xticks(x); ax_l.set_xticklabels(FIG_LABELS)
-ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color=C_AR_PROP)
-ax_r.set_ylabel("Optimality Gap (%)", color=C_AR_BASE)
-ax_l.tick_params(axis="y", labelcolor=C_AR_PROP)
-ax_r.tick_params(axis="y", labelcolor=C_AR_BASE)
+ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color=C_AR_BASE)
+ax_r.set_ylabel("Optimality Gap (%)", color=C_AR_PROP)
+ax_l.tick_params(axis="y", labelcolor=C_AR_BASE)
+ax_r.tick_params(axis="y", labelcolor=C_AR_PROP)
 ax_l.grid(True, alpha=0.3)
-ax_l.set_ylim(30, 80)
-ax_r.set_ylim(0, 25)
-all_ln = ln1+ln2+ln3+ln4
-ax_l.legend(all_ln, [l.get_label() for l in all_ln],
+ax_l.set_ylim(*auto_ylim(paper_ar_nrmse_all, fig3_ar_n))
+ax_r.set_ylim(*auto_ylim(paper_ar_gap_all, fig3_ar_g))
+ax_l.legend(ln1+ln2+ln3+ln4, [l.get_label() for l in ln1+ln2+ln3+ln4],
             loc="upper left", fontsize=9)
 fig.tight_layout()
-p3 = os.path.join(RESULTS_DIR, "fig3_spo_plus_4term_W1W2_AR.png")
+p3 = os.path.join(RESULTS_DIR, "방법3_fig3_ar_z03_block18.png")
 fig.savefig(p3, dpi=150); plt.close(fig)
-print(f"  saved: {p3}")
+print(f"  저장: {p3}")
 
 
 # =====================================================================
-# 15. Fig.5 — AR, rate 스윕 (nRMSE / Gap 2분할)
+# 16. Fig.5 — AR, c 스윕 (nRMSE / Gap 2분할)
 # =====================================================================
 print("\n" + "=" * 70)
-print("  9. Fig.5 plotting (AR, rate 스윕, 2분할)")
+print("  9. Fig.5 그리기 (AR, c 스윕, 2분할)")
 print("=" * 70)
 
-x5 = list(range(len(FIG_RATES)))
-lbl5 = [f"{int(r*100)}%" for r in FIG_RATES]
-x5_paper = x5[:11]  # 논문 판독값은 rate 0~100%(11개점)까지만 있음
+x5 = list(range(len(FIG_C_VALUES)))
+lbl5 = [f"{c:.1f}" for c in FIG_C_VALUES]
+hl_idx = FIG_C_VALUES.index(BEST_C) if BEST_C in FIG_C_VALUES else None
 
 fig5_fig, (ax5n, ax5g) = plt.subplots(1, 2, figsize=(13, 5))
-fig5_fig.suptitle(f"Fig.5 — AR SPO+ 4항식, W1=W2=1, penalty rate 스윕", fontsize=13)
+fig5_fig.suptitle(f"방법3_fig5 — AR Zhang 비대칭(rho_+=c×RT), W1/W2={FIG_C_W1}/{FIG_C_W2}, c 스윕", fontsize=13)
 
 # nRMSE
-ax5n.plot(x5_paper, FIG5_PAPER_AR_NRMSE, linestyle="--", color=C_PAPER, alpha=0.8,
-          marker="o", markersize=4, label="논문 AR")
-ax5n.plot(x5_paper, FIG5_PAPER_PROP_NRMSE, linestyle="--", color=C_AR_PROP, alpha=0.5,
-          marker="s", markersize=4, label="논문 제안모형")
-ax5n.plot(x5, fig5_ar_n_list, marker="o", color=C_AR_BASE, linewidth=2, linestyle="-", label="재현 AR")
-ax5n.plot(x5, fig5_ar_prop_n, marker="s", color=C_AR_PROP, linewidth=2, linestyle="-", label="재현 제안모형")
-ax5n.set_xticks(x5); ax5n.set_xticklabels(lbl5, rotation=45)
-ax5n.set_xlabel("벌금비용률"); ax5n.set_ylabel("nRMSE (%)")
+ax5n.axhline(ar_nrmse, linestyle="--", color=C_AR_BASE, alpha=0.6, label="재현 AR")
+ax5n.plot(x5, fig5_ar_prop_n, marker="o", color=C_AR_PROP, linewidth=2, linestyle="-", label="재현 제안모형")
+ax5n.axhline(PAPER_AR_BASE_NRMSE, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 AR nRMSE")
+if hl_idx is not None:
+    ax5n.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
+                 label=f"Best c={BEST_C}")
+ax5n.set_xticks(x5); ax5n.set_xticklabels(lbl5)
+ax5n.set_xlabel("c (rho_plus = c * RT)")
+ax5n.set_ylabel("nRMSE (%)")
 ax5n.set_title("nRMSE"); ax5n.grid(True, alpha=0.3); ax5n.legend(fontsize=8)
-ax5n.set_ylim(30, 80)
+ax5n.set_ylim(*auto_ylim([ar_nrmse, PAPER_AR_BASE_NRMSE], fig5_ar_prop_n))
 
 # Gap
-ax5g.plot(x5_paper, FIG5_PAPER_AR_GAP, linestyle="--", color=C_PAPER, alpha=0.8,
-          marker="o", markersize=4, label="논문 AR")
-ax5g.plot(x5_paper, FIG5_PAPER_PROP_GAP, linestyle="--", color=C_AR_PROP, alpha=0.5,
-          marker="s", markersize=4, label="논문 제안모형")
-ax5g.plot(x5, fig5_ar_g_list, marker="o", color=C_AR_BASE, linewidth=2, linestyle="-", label="재현 AR")
-ax5g.plot(x5, fig5_ar_prop_g, marker="s", color=C_AR_PROP, linewidth=2, linestyle="-", label="재현 제안모형")
-hl = FIG_RATES.index(KPI_RATE) if KPI_RATE in FIG_RATES else None
-if hl is not None:
-    ax5g.axvline(hl, color=C_GRID, linestyle=":", linewidth=1.5,
-                 label=f"KPI rate={int(KPI_RATE*100)}%")
-ax5g.set_xticks(x5); ax5g.set_xticklabels(lbl5, rotation=45)
-ax5g.set_xlabel("벌금비용률"); ax5g.set_ylabel("Optimality Gap (%)")
+ax5g.plot(x5, fig5_ar_g_list, marker="o", color=C_AR_BASE, linewidth=2, linestyle="-", label="재현 AR Gap")
+ax5g.plot(x5, fig5_ar_prop_g, marker="o", color=C_AR_PROP, linewidth=2, linestyle="-", label="재현 제안모형 Gap")
+ax5g.axhline(PAPER_AR_BASE_GAP, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 AR Gap")
+if hl_idx is not None:
+    ax5g.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
+                 label=f"Best c={BEST_C}")
+ax5g.set_xticks(x5); ax5g.set_xticklabels(lbl5)
+ax5g.set_xlabel("c (rho_plus = c * RT)")
+ax5g.set_ylabel("Optimality Gap (%)")
 ax5g.set_title("Optimality Gap"); ax5g.grid(True, alpha=0.3); ax5g.legend(fontsize=8)
-ax5g.set_ylim(0, 25)
+ax5g.set_ylim(*auto_ylim(fig5_ar_g_list, fig5_ar_prop_g, [PAPER_AR_BASE_GAP]))
 
 fig5_fig.tight_layout()
-p5 = os.path.join(RESULTS_DIR, "fig5_spo_plus_4term_rate_AR.png")
+p5 = os.path.join(RESULTS_DIR, "방법3_fig5_ar_z03_block18.png")
 fig5_fig.savefig(p5, dpi=150); plt.close(fig5_fig)
-print(f"  saved: {p5}")
+print(f"  저장: {p5}")
 
 
 # =====================================================================
-# 16. Fig.6 — MLR, dual y축 (nRMSE 좌, Gap 우)
+# 17. Fig.6 — MLR, dual y축 (nRMSE 좌, Gap 우)
 # =====================================================================
 print("\n" + "=" * 70)
-print("  10. Fig.6 plotting (MLR, W1/W2 스윕, dual y축)")
+print("  10. Fig.6 그리기 (MLR, W1/W2 스윕, dual y축)")
 print("=" * 70)
 
 fig6_fig, ax_l = plt.subplots(figsize=(10, 6))
-fig6_fig.suptitle(f"Fig.6 — MLR SPO+ 4항식, rate={FIG36_RATE}, W1/W2 스윕", fontsize=13)
+fig6_fig.suptitle(f"방법3_fig6 — MLR Zhang 비대칭(rho_+=c×RT), c={BEST_C}, W1/W2 스윕", fontsize=13)
 ax_r = ax_l.twinx()
 
-paper_mlr_nrmse_all = [PAPER_MLR_NRMSE] + PAPER_PROP_MLR_NRMSE
-paper_mlr_gap_all = [PAPER_MLR_GAP] + PAPER_PROP_MLR_GAP
 ln1 = ax_l.plot(x, paper_mlr_nrmse_all, marker="o", color=C_PAPER,
-                linewidth=2, linestyle=":", label="논문 nRMSE", alpha=0.8)
-ln2 = ax_l.plot(x, fig6_mlr_n, marker="s", color=C_MLR_PROP,
+                linestyle=":", label="논문 nRMSE", alpha=0.7)
+ln2 = ax_l.plot(x, fig6_mlr_n,  marker="o", color=C_MLR_BASE,
                 linewidth=2, linestyle="-", label="재현 nRMSE")
-ln3 = ax_r.plot(x, paper_mlr_gap_all, marker="^", color=C_PAPER,
-                linewidth=2, linestyle=":", label="논문 Gap", alpha=0.8)
-ln4 = ax_r.plot(x, fig6_mlr_g, marker="d", color=C_MLR_BASE,
+ln3 = ax_r.plot(x, paper_mlr_gap_all, marker="s", color=C_PAPER,
+                linestyle=":", label="논문 Gap", alpha=0.7)
+ln4 = ax_r.plot(x, fig6_mlr_g,  marker="s", color=C_MLR_PROP,
                 linewidth=2, linestyle="-", label="재현 Gap")
 
 ax_l.set_xticks(x); ax_l.set_xticklabels(FIG_LABELS)
-ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color=C_MLR_PROP)
-ax_r.set_ylabel("Optimality Gap (%)", color=C_MLR_BASE)
-ax_l.tick_params(axis="y", labelcolor=C_MLR_PROP)
-ax_r.tick_params(axis="y", labelcolor=C_MLR_BASE)
+ax_l.set_xlabel("W1/W2"); ax_l.set_ylabel("nRMSE (%)", color=C_MLR_BASE)
+ax_r.set_ylabel("Optimality Gap (%)", color=C_MLR_PROP)
+ax_l.tick_params(axis="y", labelcolor=C_MLR_BASE)
+ax_r.tick_params(axis="y", labelcolor=C_MLR_PROP)
 ax_l.grid(True, alpha=0.3)
-ax_l.set_ylim(0, 80)
-ax_r.set_ylim(0, 25)
-all_ln = ln1+ln2+ln3+ln4
-ax_l.legend(all_ln, [l.get_label() for l in all_ln],
+ax_l.set_ylim(*auto_ylim(paper_mlr_nrmse_all, fig6_mlr_n))
+ax_r.set_ylim(*auto_ylim(paper_mlr_gap_all, fig6_mlr_g))
+ax_l.legend(ln1+ln2+ln3+ln4, [l.get_label() for l in ln1+ln2+ln3+ln4],
             loc="upper left", fontsize=9)
 fig6_fig.tight_layout()
-p6 = os.path.join(RESULTS_DIR, "fig6_spo_plus_4term_W1W2_MLR.png")
+p6 = os.path.join(RESULTS_DIR, "방법3_fig6_mlr_z03_block18.png")
 fig6_fig.savefig(p6, dpi=150); plt.close(fig6_fig)
-print(f"  saved: {p6}")
+print(f"  저장: {p6}")
 
 
 # =====================================================================
-# 17. Fig.8 — MLR, rate 스윕 (nRMSE / Gap 2분할)
+# 18. Fig.8 — MLR, c 스윕 (nRMSE / Gap 2분할)
 # =====================================================================
 print("\n" + "=" * 70)
-print("  11. Fig.8 plotting (MLR, rate 스윕, 2분할)")
+print("  11. Fig.8 그리기 (MLR, c 스윕, 2분할)")
 print("=" * 70)
 
 fig8_fig, (ax8n, ax8g) = plt.subplots(1, 2, figsize=(13, 5))
-fig8_fig.suptitle(f"Fig.8 — MLR SPO+ 4항식, W1=W2=1, penalty rate 스윕", fontsize=13)
+fig8_fig.suptitle(f"방법3_fig8 — MLR Zhang 비대칭(rho_+=c×RT), W1/W2={FIG_C_W1}/{FIG_C_W2}, c 스윕", fontsize=13)
 
 # nRMSE
-ax8n.plot(x5_paper, FIG8_PAPER_MLR_NRMSE, linestyle="--", color=C_PAPER, alpha=0.8,
-          marker="o", markersize=4, label="논문 MLR")
-ax8n.plot(x5_paper, FIG8_PAPER_PROP_NRMSE, linestyle="--", color=C_MLR_PROP, alpha=0.5,
-          marker="s", markersize=4, label="논문 제안모형")
-ax8n.plot(x5, fig8_mlr_n_list, marker="o", color=C_MLR_BASE, linewidth=2, linestyle="-", label="재현 MLR")
-ax8n.plot(x5, fig8_mlr_prop_n, marker="s", color=C_MLR_PROP, linewidth=2, linestyle="-", label="재현 제안모형")
-ax8n.set_xticks(x5); ax8n.set_xticklabels(lbl5, rotation=45)
-ax8n.set_xlabel("벌금비용률"); ax8n.set_ylabel("nRMSE (%)")
+ax8n.axhline(mlr_nrmse, linestyle="--", color=C_MLR_BASE, alpha=0.6, label="재현 MLR")
+ax8n.plot(x5, fig8_mlr_prop_n, marker="o", color=C_MLR_PROP, linewidth=2, linestyle="-", label="재현 제안모형")
+ax8n.axhline(PAPER_MLR_BASE_NRMSE, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 MLR nRMSE")
+if hl_idx is not None:
+    ax8n.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
+                 label=f"Best c={BEST_C}")
+ax8n.set_xticks(x5); ax8n.set_xticklabels(lbl5)
+ax8n.set_xlabel("c (rho_plus = c * RT)")
+ax8n.set_ylabel("nRMSE (%)")
 ax8n.set_title("nRMSE"); ax8n.grid(True, alpha=0.3); ax8n.legend(fontsize=8)
-ax8n.set_ylim(0, 80)
+ax8n.set_ylim(*auto_ylim([mlr_nrmse, PAPER_MLR_BASE_NRMSE], fig8_mlr_prop_n))
 
 # Gap
-ax8g.plot(x5_paper, FIG8_PAPER_MLR_GAP, linestyle="--", color=C_PAPER, alpha=0.8,
-          marker="o", markersize=4, label="논문 MLR")
-ax8g.plot(x5_paper, FIG8_PAPER_PROP_GAP, linestyle="--", color=C_MLR_PROP, alpha=0.5,
-          marker="s", markersize=4, label="논문 제안모형")
-ax8g.plot(x5, fig8_mlr_g_list, marker="o", color=C_MLR_BASE, linewidth=2, linestyle="-", label="재현 MLR")
-ax8g.plot(x5, fig8_mlr_prop_g, marker="s", color=C_MLR_PROP, linewidth=2, linestyle="-", label="재현 제안모형")
-if hl is not None:
-    ax8g.axvline(hl, color=C_GRID, linestyle=":", linewidth=1.5,
-                 label=f"KPI rate={int(KPI_RATE*100)}%")
-ax8g.set_xticks(x5); ax8g.set_xticklabels(lbl5, rotation=45)
-ax8g.set_xlabel("벌금비용률"); ax8g.set_ylabel("Optimality Gap (%)")
+ax8g.plot(x5, fig8_mlr_g_list, marker="o", color=C_MLR_BASE, linewidth=2, linestyle="-", label="재현 MLR Gap")
+ax8g.plot(x5, fig8_mlr_prop_g, marker="o", color=C_MLR_PROP, linewidth=2, linestyle="-", label="재현 제안모형 Gap")
+ax8g.axhline(PAPER_MLR_BASE_GAP, color=C_PAPER, linewidth=1.5, alpha=0.8,
+             linestyle=":", label="논문 MLR Gap")
+if hl_idx is not None:
+    ax8g.axvline(hl_idx, color=C_GRID, linestyle=":", linewidth=1.5,
+                 label=f"Best c={BEST_C}")
+ax8g.set_xticks(x5); ax8g.set_xticklabels(lbl5)
+ax8g.set_xlabel("c (rho_plus = c * RT)")
+ax8g.set_ylabel("Optimality Gap (%)")
 ax8g.set_title("Optimality Gap"); ax8g.grid(True, alpha=0.3); ax8g.legend(fontsize=8)
-ax8g.set_ylim(0, 25)
+ax8g.set_ylim(*auto_ylim(fig8_mlr_g_list, fig8_mlr_prop_g, [PAPER_MLR_BASE_GAP]))
 
 fig8_fig.tight_layout()
-p8 = os.path.join(RESULTS_DIR, "fig8_spo_plus_4term_rate_MLR.png")
+p8 = os.path.join(RESULTS_DIR, "방법3_fig8_mlr_z03_block18.png")
 fig8_fig.savefig(p8, dpi=150); plt.close(fig8_fig)
-print(f"  saved: {p8}")
+print(f"  저장: {p8}")
 
 
-# =====================================================================
-# 18. 전체 결과 요약
 # =====================================================================
 print("\n" + "=" * 70)
-print("  완료 — SPO+ 4항식 통합 실험 (AR+MLR, z01/블럭21)")
+print("  완료 — Zhang 비대칭 3항식 통합 실험 (AR+MLR, z03/블록18)")
 print("=" * 70)
 print(f"""
   생성 파일:
-    Fig.3 (AR W1/W2):   {p3}
-    Fig.5 (AR rate):    {p5}
-    Fig.6 (MLR W1/W2):  {p6}
-    Fig.8 (MLR rate):   {p8}
-    Grid CSV:           {grid_csv}
-
-  ── KPI 조건 (W1=1, W2=20, rate=50%) ──
-    AR  제안모형: nRMSE={ar_kpi_n:.2f}%, Gap={ar_kpi_g:.2f}%
-    MLR 제안모형: nRMSE={mlr_kpi_n:.2f}%, Gap={mlr_kpi_g:.2f}%
-    AR  논문 기준: nRMSE={PAPER_AR_NRMSE:.2f}%, Gap={PAPER_AR_GAP:.2f}%
-    MLR 논문 기준: nRMSE={PAPER_MLR_NRMSE:.2f}%, Gap={PAPER_MLR_GAP:.2f}%
-
-  ※ 4항식 SPO+ = decomposition 방식 (oracle normalization)
-     (ζ-제약 방식과 달리 예측 정확도 + regret 동시 최적화)
+    그림: {p3}
+    그림: {p5}
+    그림: {p6}
+    그림: {p8}
+    CSV : grid_zhang_asym_3term_ar_mlr.csv
+    CSV : fig3_zhang_asym_AR.csv, fig5_zhang_asym_c_AR.csv
+    CSV : fig6_zhang_asym_MLR.csv, fig8_zhang_asym_c_MLR.csv
 """)

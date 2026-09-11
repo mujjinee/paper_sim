@@ -63,9 +63,15 @@ scale = CAPACITY_MW * DURATION_HOURS
 
 KPI_RATE = 0.5
 
-W_RATIOS = [(1,20),(1,10),(1,5),(1,2),(1,1)]
-W_LABELS = ["1/20","1/10","1/5","1/2","1/1"]
-RATES    = [0.5, 0.6, 0.7, 0.8]
+W_RATIOS = [(1,20),(1,10),(1,5),(1,2),(1,1),(2,1),(5,1),(10,1),(20,1),(1,0)]
+W_LABELS = ["1/20","1/10","1/5","1/2","1/1","2/1","5/1","10/1","20/1","1/0"]
+RATES    = [round(0.1 * i, 1) for i in range(11)]  # 0~100% (방법2/4와 동일하게 확장)
+
+# ── W2 균형 보정 Weight — 방법4와 같은 이유로 여기서도 적용하지 않는다 ──
+# (raw 계수 구조라 W1 항이 W2보다 훨씬 크지만, 방법4에서 Weight=4를 포팅했을 때 오히려
+# collapse 구간이 넓어지는 걸 확인했다. PC=rate*(DA+RT)도 raw 계수라 같은 위험이 있어
+# 기본값 1(무보정)로 둔다.)
+W2_BALANCE_WEIGHT = 1
 
 # 논문 기준값 (z03/블록18, Table 3/4) — baseline(AR/MLR only) 및 제안모형 W1/W2 스윕값
 PAPER_AR_BASE_NRMSE = 34.76;   PAPER_AR_BASE_GAP   = 15.04
@@ -90,12 +96,14 @@ FIG5_PAPER_AR_NRMSE   = [34.76] * 11
 FIG5_PAPER_AR_GAP     = [9, 11, 12, 13, 14, 15.04, 16, 18, 19, 20, 22]
 FIG5_PAPER_PROP_NRMSE = [46, 34, 35, 36, 40, 44.45, 50, 55, 61, 64, 67]
 FIG5_PAPER_PROP_GAP   = [8, 10, 11, 11, 11, 11.44, 11, 11.5, 11.5, 11.5, 11.5]
-# 논문 원본 Fig.8(a)/(b) 육안 판독값 (MLR, rate 0~100% 11개점) — 50%만 Table 4 실측치,
-# 나머지는 논문 PDF Fig.8(a)/(b) 그래프에서 직접 판독
+# 논문 원본 Fig.8(a)/(b) 픽셀 추출값 (MLR, rate 0~100% 11개점, references/APEN_논문.pdf p.9)
+# PyMuPDF로 페이지를 600dpi로 렌더링 후 곡선 색상 픽셀 좌표를 축 눈금 기준으로 데이터값 역산.
+# 50% 지점이 Table 4 실측치(MLR 21.76%/12.59%, 제안모형 W1=W2=1: 22.01%/10.28%)와
+# 정확히 일치해 추출 신뢰도 확인됨(방법2_4term_ar_mlr_z03_block18.py 작업 때 추출).
 FIG8_PAPER_MLR_NRMSE  = [21.76] * 11
-FIG8_PAPER_PROP_NRMSE = [24.0, 22.5, 21.8, 21.3, 21.8, 22.01, 22.4, 23.0, 23.7, 25.0, 26.2]
-FIG8_PAPER_MLR_GAP    = [8.0, 8.9, 9.8, 10.7, 11.6, 12.59, 13.4, 14.3, 15.2, 16.1, 17.0]
-FIG8_PAPER_PROP_GAP   = [7.7, 9.2, 9.5, 10.0, 10.3, 10.28, 10.7, 10.9, 10.9, 11.0, 10.9]
+FIG8_PAPER_PROP_NRMSE = [23.92, 22.56, 21.76, 21.41, 21.67, 22.01, 22.45, 23.14, 23.76, 24.98, 26.10]
+FIG8_PAPER_MLR_GAP    = [8.18, 9.05, 9.93, 10.83, 11.71, 12.60, 13.48, 14.37, 15.25, 16.13, 16.98]
+FIG8_PAPER_PROP_GAP   = [7.59, 8.53, 9.17, 9.56, 9.94, 10.28, 10.52, 10.68, 10.85, 10.96, 10.93]
 
 
 # =====================================================================
@@ -156,6 +164,22 @@ print(f"  train: {n_tr_days}일({n_tr_obs}행), test: {n_te_days}일({n_te_obs}�
 def nrmse_fn(p, a):
     return 100.0 * np.sqrt(np.mean((a-p)**2)) / np.mean(a)
 
+
+def auto_ylim(*series, pad_frac=0.12, round_to=5, floor_at_zero=True):
+    """그림마다 실제로 그려지는 값들의 범위에 맞춰 y축을 정한다 (고정된 30~80/0~25 대신)."""
+    vals = []
+    for s in series:
+        vals.extend([v for v in s if v is not None])
+    lo, hi = min(vals), max(vals)
+    span = hi - lo
+    pad = span * pad_frac if span > 0 else max(hi * 0.1, round_to)
+    lo -= pad; hi += pad
+    lo = round_to * np.floor(lo / round_to)
+    hi = round_to * np.ceil(hi / round_to)
+    if floor_at_zero:
+        lo = max(lo, 0)
+    return float(lo), float(hi)
+
 def chunk_matmul(A, b, chunk=100):
     n = A.shape[0]
     if n <= chunk: return A @ b
@@ -163,6 +187,9 @@ def chunk_matmul(A, b, chunk=100):
     for i in range(0, n, chunk): out[i:i+chunk] = A[i:i+chunk] @ b
     return out
 
+# 방법2(PC=RT+rate*DA)에서는 oracle을 3후보{0,actual,1.0}→2후보{0,actual}로 줄여도 됐지만
+# (§8.1, baseline Gap이 논문과 ±0.1%p 일치), 이 formula(PC=rate*(DA+RT))도 rate=0일 때
+# PC=0이 되어 방법4와 같은 이유로 2후보로 줄이면 Gap이 음수가 될 수 있다. 3후보를 유지한다.
 def compute_gap(pc_rate, pred, actual, da, rt):
     """PC = rate*(DA + RT) 기반 optimality gap"""
     s_r = 0.0; s_o = 0.0
@@ -229,6 +256,7 @@ _cache = {}
 def solve_ar(pc_rate, W1, W2):
     k = (pc_rate, W1, W2, "ar")
     if k in _cache: return _cache[k]
+    W2_eff = W2 * W2_BALANCE_WEIGHT
     coeffs = np.zeros((HOURS_PER_DAY, n_feat_ar))
     for hour in range(HOURS_PER_DAY):
         y_h = tr_s[:, hour]; da_h = tr_d[:, hour]; rt_h = tr_r[:, hour]
@@ -237,8 +265,8 @@ def solve_ar(pc_rate, W1, W2):
         sc = np.zeros(n_obs); yc = np.zeros(n_obs)
         for i in range(n_obs):
             pc = pc_rate * (da_h[i] + rt_h[i])
-            sc[i] = (-W1 * rt_h[i]) + W2        # 논문 Eq.(9a), 정규화 제거
-            yc[i] = (W1 * pc) + W2              # 논문 Eq.(9a), 정규화 제거
+            sc[i] = (-W1 * rt_h[i]) + W2_eff    # 논문 Eq.(9a), 정규화 제거
+            yc[i] = (W1 * pc) + W2_eff          # 논문 Eq.(9a), 정규화 제거
 
         bl = [i for i in range(n_obs) if sc[i]+yc[i] < 0]
         ba = np.array(bl, dtype=int); nb = len(ba)
@@ -293,13 +321,14 @@ def solve_ar(pc_rate, W1, W2):
 def solve_mlr(pc_rate, W1, W2):
     k = (pc_rate, W1, W2, "mlr")
     if k in _cache: return _cache[k]
+    W2_eff = W2 * W2_BALANCE_WEIGHT
     n_obs = n_tr_obs
 
     sc = np.zeros(n_obs); yc = np.zeros(n_obs)
     for i in range(n_obs):
         pc = pc_rate * (mlr_tr_d[i] + mlr_tr_r[i])
-        sc[i] = (-W1 * mlr_tr_r[i]) + W2
-        yc[i] = (W1 * pc) + W2
+        sc[i] = (-W1 * mlr_tr_r[i]) + W2_eff
+        yc[i] = (W1 * pc) + W2_eff
 
     bl = [i for i in range(n_obs) if sc[i]+yc[i] < 0]
     ba = np.array(bl, dtype=int); nb = len(ba)
@@ -359,10 +388,10 @@ for w1, w2 in W_RATIOS:
 
 
 # =====================================================================
-# 9. Fig5/8 데이터 — rate 0~150% (W1=W2=1)
+# 9. Fig5/8 데이터 — rate 0~100% (W1=W2=1)
 # =====================================================================
 print("\n" + "=" * 70)
-print("  5. Fig.5/8 데이터 — rate 0~150% (W1=W2=1)")
+print("  5. Fig.5/8 데이터 — rate 0~100% (W1=W2=1, raw 계수 그대로 — 방법2식 W2 보정 미적용)")
 print("=" * 70)
 
 f5_pn=[]; f5_pg=[]; f8_pn=[]; f8_pg=[]
@@ -432,7 +461,7 @@ paper_ar_gap_all = [PAPER_AR_BASE_GAP] + PAPER_AR_PROP_GAP
 f3n_all = [ar_nrmse] + f3n
 f3g_all = [ar_kpi_gap_base] + f3g
 fig, ax = plt.subplots(figsize=(10, 6))
-fig.suptitle("Fig.3 — AR, W1/W2 스윕 (rate=0.5, PC=rate*(DA+RT))", fontsize=13)
+fig.suptitle("방법5_fig3 — AR PC=rate×(DA+RT), W1/W2 스윕 (rate=0.5)", fontsize=13)
 ax_r = ax.twinx()
 
 ax.plot(x_w, paper_ar_nrmse_all, marker="o", color=C_PAPER, lw=2, ls="--",
@@ -447,12 +476,12 @@ ax.set_xlabel("W1/W2"); ax.set_ylabel("nRMSE (%)", color=C_PAPER)
 ax_r.set_ylabel("Optimality Gap (%)", color=C_PROP)
 ax.tick_params(axis="y", labelcolor=C_PAPER); ax_r.tick_params(axis="y", labelcolor=C_PROP)
 ax.grid(True, alpha=0.3, color=C_GRID)
-ax.set_ylim(30, 80)
-ax_r.set_ylim(0, 25)
+ax.set_ylim(*auto_ylim(paper_ar_nrmse_all, f3n_all))
+ax_r.set_ylim(*auto_ylim(paper_ar_gap_all, f3g_all))
 h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax_r.get_legend_handles_labels()
 ax.legend(h1+h2, l1+l2, loc="upper left", fontsize=10)
 fig.tight_layout()
-p3 = os.path.join(RESULTS_DIR, "fig3_pc_da_plus_rt_W1W2_AR.png")
+p3 = os.path.join(RESULTS_DIR, "방법5_fig3_ar_z03_block18.png")
 fig.savefig(p3, dpi=150); plt.close(fig)
 print(f"  saved: {p3}")
 
@@ -465,14 +494,14 @@ print("  7. Fig.5 그리기")
 print("=" * 70)
 
 x_rates = list(range(len(RATES))); lbl = [f"{int(r*100)}%" for r in RATES]; hl = RATES.index(KPI_RATE)
-# RATES(0.5~0.8)는 논문 Fig.5 판독값(0~100%, 11개점)의 인덱스 5~8 구간과 일치
+# RATES는 이제 0~100%(11개점)로 논문 Fig.5 판독값과 인덱스가 그대로 일치
 rate_idx = [round(r*10) for r in RATES]
 fig5_paper_ar_n = [FIG5_PAPER_AR_NRMSE[i] for i in rate_idx]
 fig5_paper_prop_n = [FIG5_PAPER_PROP_NRMSE[i] for i in rate_idx]
 fig5_paper_ar_g = [FIG5_PAPER_AR_GAP[i] for i in rate_idx]
 fig5_paper_prop_g = [FIG5_PAPER_PROP_GAP[i] for i in rate_idx]
 fig5, (a5n, a5g) = plt.subplots(1, 2, figsize=(13, 5))
-fig5.suptitle("Fig.5 — AR, rate 스윕 (W1=W2=1, PC=rate*(DA+RT))", fontsize=13)
+fig5.suptitle("방법5_fig5 — AR PC=rate×(DA+RT), W1=W2=1, penalty rate 스윕", fontsize=13)
 
 a5n.plot(x_rates, fig5_paper_ar_n, ls="--", color=C_AR, marker="o", markersize=4,
          alpha=0.6, label="논문 AR")
@@ -483,7 +512,7 @@ a5n.plot(x_rates, f5_pn, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현
 a5n.set_xticks(x_rates); a5n.set_xticklabels(lbl, rotation=45)
 a5n.set_xlabel("벌금비용률"); a5n.set_ylabel("nRMSE (%)")
 a5n.set_title("nRMSE"); a5n.grid(True, alpha=0.3, color=C_GRID); a5n.legend(fontsize=8)
-a5n.set_ylim(30, 80)
+a5n.set_ylim(*auto_ylim(fig5_paper_ar_n, fig5_paper_prop_n, [ar_nrmse], f5_pn))
 
 a5g.plot(x_rates, fig5_paper_ar_g, ls="--", color=C_AR, marker="o", markersize=4,
          alpha=0.6, label="논문 AR")
@@ -495,10 +524,10 @@ a5g.axvline(hl, color=C_GRID, ls=":", lw=1.5, label=f"KPI rate={int(KPI_RATE*100
 a5g.set_xticks(x_rates); a5g.set_xticklabels(lbl, rotation=45)
 a5g.set_xlabel("벌금비용률"); a5g.set_ylabel("Optimality Gap (%)")
 a5g.set_title("Optimality Gap"); a5g.grid(True, alpha=0.3, color=C_GRID); a5g.legend(fontsize=8)
-a5g.set_ylim(0, 25)
+a5g.set_ylim(*auto_ylim(fig5_paper_ar_g, fig5_paper_prop_g, f5_bg, f5_pg))
 
 fig5.tight_layout()
-p5 = os.path.join(RESULTS_DIR, "fig5_pc_da_plus_rt_rate_AR.png")
+p5 = os.path.join(RESULTS_DIR, "방법5_fig5_ar_z03_block18.png")
 fig5.savefig(p5, dpi=150); plt.close(fig5)
 print(f"  saved: {p5}")
 
@@ -511,7 +540,7 @@ print("  8. Fig.6 그리기")
 print("=" * 70)
 
 fig6, ax6 = plt.subplots(figsize=(10, 6))
-fig6.suptitle("Fig.6 — MLR, W1/W2 스윕 (rate=0.5, PC=rate*(DA+RT))", fontsize=13)
+fig6.suptitle("방법5_fig6 — MLR PC=rate×(DA+RT), W1/W2 스윕 (rate=0.5)", fontsize=13)
 ax6_r = ax6.twinx()
 
 paper_mlr_nrmse_all = [PAPER_MLR_BASE_NRMSE] + PAPER_MLR_PROP_NRMSE
@@ -531,12 +560,12 @@ ax6.set_xlabel("W1/W2"); ax6.set_ylabel("nRMSE (%)", color=C_PAPER)
 ax6_r.set_ylabel("Optimality Gap (%)", color=C_PROP)
 ax6.tick_params(axis="y", labelcolor=C_PAPER); ax6_r.tick_params(axis="y", labelcolor=C_PROP)
 ax6.grid(True, alpha=0.3, color=C_GRID)
-ax6.set_ylim(0, 80)
-ax6_r.set_ylim(0, 25)
+ax6.set_ylim(*auto_ylim(paper_mlr_nrmse_all, f6n_all))
+ax6_r.set_ylim(*auto_ylim(paper_mlr_gap_all, f6g_all))
 h1, l1 = ax6.get_legend_handles_labels(); h2, l2 = ax6_r.get_legend_handles_labels()
 ax6.legend(h1+h2, l1+l2, loc="upper left", fontsize=10)
 fig6.tight_layout()
-p6 = os.path.join(RESULTS_DIR, "fig6_pc_da_plus_rt_W1W2_MLR.png")
+p6 = os.path.join(RESULTS_DIR, "방법5_fig6_mlr_z03_block18.png")
 fig6.savefig(p6, dpi=150); plt.close(fig6)
 print(f"  saved: {p6}")
 
@@ -553,7 +582,7 @@ fig8_paper_prop_n = [FIG8_PAPER_PROP_NRMSE[i] for i in rate_idx]
 fig8_paper_mlr_g = [FIG8_PAPER_MLR_GAP[i] for i in rate_idx]
 fig8_paper_prop_g = [FIG8_PAPER_PROP_GAP[i] for i in rate_idx]
 fig8, (a8n, a8g) = plt.subplots(1, 2, figsize=(13, 5))
-fig8.suptitle("Fig.8 — MLR, rate 스윕 (W1=W2=1, PC=rate*(DA+RT))", fontsize=13)
+fig8.suptitle("방법5_fig8 — MLR PC=rate×(DA+RT), W1=W2=1, penalty rate 스윕", fontsize=13)
 
 a8n.plot(x_rates, fig8_paper_mlr_n, ls="--", color=C_MLR, marker="o", markersize=4,
          alpha=0.6, label="논문 MLR")
@@ -564,7 +593,7 @@ a8n.plot(x_rates, f8_pn, marker="s", color=C_PROP, lw=2.5, ls="-", label="재현
 a8n.set_xticks(x_rates); a8n.set_xticklabels(lbl, rotation=45)
 a8n.set_xlabel("벌금비용률"); a8n.set_ylabel("nRMSE (%)")
 a8n.set_title("nRMSE"); a8n.grid(True, alpha=0.3, color=C_GRID); a8n.legend(fontsize=8)
-a8n.set_ylim(0, 80)
+a8n.set_ylim(*auto_ylim(fig8_paper_mlr_n, fig8_paper_prop_n, [mlr_nrmse], f8_pn))
 
 a8g.plot(x_rates, fig8_paper_mlr_g, ls="--", color=C_MLR, marker="o", markersize=4,
          alpha=0.6, label="논문 MLR")
@@ -576,10 +605,10 @@ a8g.axvline(hl, color=C_GRID, ls=":", lw=1.5, label=f"KPI rate={int(KPI_RATE*100
 a8g.set_xticks(x_rates); a8g.set_xticklabels(lbl, rotation=45)
 a8g.set_xlabel("벌금비용률"); a8g.set_ylabel("Optimality Gap (%)")
 a8g.set_title("Optimality Gap"); a8g.grid(True, alpha=0.3, color=C_GRID); a8g.legend(fontsize=8)
-a8g.set_ylim(0, 25)
+a8g.set_ylim(*auto_ylim(fig8_paper_mlr_g, fig8_paper_prop_g, f8_bg, f8_pg))
 
 fig8.tight_layout()
-p8 = os.path.join(RESULTS_DIR, "fig8_pc_da_plus_rt_rate_MLR.png")
+p8 = os.path.join(RESULTS_DIR, "방법5_fig8_mlr_z03_block18.png")
 fig8.savefig(p8, dpi=150); plt.close(fig8)
 print(f"  saved: {p8}")
 
