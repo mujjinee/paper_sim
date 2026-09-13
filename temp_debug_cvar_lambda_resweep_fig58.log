@@ -1,0 +1,23 @@
+======================================================================
+  데이터 로딩
+======================================================================
+  train days=90, test days=30
+
+======================================================================
+  Fig.5/8 기준점(W1=1,W2=1,rate=0.5)에서 λ 재스윕
+======================================================================
+  lam=0.0     nRMSE=44.645%(Δ+0.000) Gap=11.794%(Δ+0.000)  ΔTotalRegret=+0.00% ΔCVaR90=+0.00% ΔMaxRegret=+0.00%
+  lam=0.0025  nRMSE=45.072%(Δ+0.428) Gap=12.210%(Δ+0.417)  ΔTotalRegret=+3.53% ΔCVaR90=+3.83% ΔMaxRegret=+0.00%
+  lam=0.005   nRMSE=44.949%(Δ+0.304) Gap=11.765%(Δ-0.029)  ΔTotalRegret=-0.24% ΔCVaR90=-1.10% ΔMaxRegret=+0.00%
+  lam=0.0075  nRMSE=45.016%(Δ+0.371) Gap=11.705%(Δ-0.089)  ΔTotalRegret=-0.75% ΔCVaR90=-1.75% ΔMaxRegret=+0.00%
+  lam=0.01    nRMSE=45.845%(Δ+1.200) Gap=11.587%(Δ-0.206)  ΔTotalRegret=-1.75% ΔCVaR90=-3.04% ΔMaxRegret=-0.21%
+  lam=0.015   nRMSE=47.557%(Δ+2.912) Gap=11.560%(Δ-0.234)  ΔTotalRegret=-1.98% ΔCVaR90=-4.38% ΔMaxRegret=-0.21%
+  lam=0.02    nRMSE=47.993%(Δ+3.348) Gap=11.588%(Δ-0.206)  ΔTotalRegret=-1.75% ΔCVaR90=-4.72% ΔMaxRegret=-1.11%
+  lam=0.03    nRMSE=49.932%(Δ+5.287) Gap=11.516%(Δ-0.278)  ΔTotalRegret=-2.35% ΔCVaR90=-7.37% ΔMaxRegret=-5.10%
+  lam=0.05    nRMSE=50.640%(Δ+5.995) Gap=11.538%(Δ-0.255)  ΔTotalRegret=-2.16% ΔCVaR90=-9.14% ΔMaxRegret=-18.13%
+  lam=0.1     nRMSE=58.279%(Δ+13.635) Gap=11.788%(Δ-0.006)  ΔTotalRegret=-0.05% ΔCVaR90=-10.68% ΔMaxRegret=-18.39%
+
+  saved: D:\03_JiWon\JiWonProject\results\simulation_output\temp_cvar_lambda_resweep_fig58.csv
+
+  [추천] ΔnRMSE <= +1.0%p 제약 하에서 ΔTotalRegret이 가장 크게 줄어드는 λ = 0.0075
+         nRMSE 45.016%(Δ+0.371) Gap 11.705%(Δ-0.089) ΔTotalRegret=-0.75% ΔCVaR90=-1.75% ΔMaxRegret=+0.00%

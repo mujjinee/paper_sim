@@ -21,12 +21,18 @@ plt.rcParams["axes.unicode_minus"] = False
 OUT_DIR = "results"
 os.makedirs(OUT_DIR, exist_ok=True)
 
+# 발전시간대 정의 — 보고서 2~3장·5장(방법1~6) 전부가 쓰는 "official" 정의를 그대로 따른다.
+# (기본코드_(2)_AR_MLR_baseline_proposed_3가지_profit_figure코드 폴더의 12개 스크립트 전부
+#  LOCAL_HOUR_START=9, LOCAL_HOUR_END=21, 즉 "Sydney 현지시간 9~20시 고정 12시간"으로 하드코딩돼 있다.)
+LOCAL_HOUR_START = 9
+LOCAL_HOUR_END = 21  # 이 값 미만까지, 즉 9~20시
+
 # 4개 대표 블록: (라벨, zone파일, 전체구간 시작, 전체구간 끝)
 BLOCKS = [
     ("여름 (z03/블록18)", "z03", "2013-08-25", "2013-12-22"),
     ("겨울 (z01/블록1)",  "z01", "2012-04-02", "2012-07-30"),
     ("봄 (z03/블록3)",    "z03", "2012-06-01", "2012-09-28"),
-    ("가을 (z01/블록21)", "z01", "2013-01-26", "2013-05-25"),
+    ("가을 (z01/블록9)", "z01", "2012-11-27", "2013-03-27"),
 ]
 
 data = {}
@@ -55,6 +61,13 @@ for i, (label, zone, start, end) in enumerate(BLOCKS):
 
     n_hours_da_gt_rt = (hourly["da"] > hourly["rt"]).sum()
     avg_gap = (hourly["da"] - hourly["rt"]).mean()
+
+    # 발전시간대(9~20시 고정)만 걸러서 통계 — 보고서 전반의 "official" 정의와 통일
+    daylight = hourly.loc[LOCAL_HOUR_START:LOCAL_HOUR_END - 1]
+    n_daylight = len(daylight)
+    n_daylight_gt = (daylight["da"] > daylight["rt"]).sum()
+    daylight_gap = (daylight["da"] - daylight["rt"]).mean()
+
     summary_rows.append({
         "block": label, "zone": zone,
         "avg_DA": hourly["da"].mean(), "avg_RT": hourly["rt"].mean(),
@@ -62,7 +75,9 @@ for i, (label, zone, start, end) in enumerate(BLOCKS):
         "hours_DA_gt_RT": n_hours_da_gt_rt,
         "peak_solar_hour": int(hourly["solar"].idxmax()),
         "peak_solar_value": hourly["solar"].max(),
-        "daylight_hours": int((hourly["solar"] > 0.01).sum()),
+        "daylight_hours": n_daylight,
+        "daylight_hours_DA_gt_RT": n_daylight_gt,
+        "daylight_avg_DA_minus_RT": daylight_gap,
     })
 
     # ── 위 행: 논문 Fig.1과 같은 형식 — 시간대별 DA/RT 박스플롯 ──
