@@ -1,0 +1,20 @@
+======================================================================
+  1. 데이터 로딩
+======================================================================
+  train: 90일(1080행), test: 30일(360행)
+
+======================================================================
+  2. AR baseline (bounded LAD, 시간대별)
+======================================================================
+Restricted license - for non-production use only - expires 2027-11-29
+  AR baseline nRMSE = 36.11%
+
+======================================================================
+  3. MLR baseline (bounded LAD, pooled)
+======================================================================
+Traceback (most recent call last):
+  File "D:\03_JiWon\JiWonProject\방법8_w2x4_ar_mlr_z03_block18_gurobi_figure.py", line 361, in <module>
+    gmodel_mlr.optimize()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "src/gurobipy/_model.pyx", line 926, in gurobipy._model.Model.optimize
+gurobipy._exception.GurobiError: Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information
