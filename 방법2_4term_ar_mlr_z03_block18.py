@@ -227,12 +227,18 @@ print(f"  train: {n_train_days}일({n_train_obs}행), test: {n_test_days}일({n_
 
 
 # =====================================================================
-# 3. Gap 계산 함수 — PC=RT+rate*DA, oracle 2후보 {commit=0, commit=actual}
+# 3. Gap 계산 함수 — PC=RT+rate*DA, oracle 3후보 {commit=0, commit=actual, commit=1.0}
 # =====================================================================
-# 오늘_GapRate비교.md §8.1: oracle을 원래 3후보{0, actual, 1.0}에서 commit=1.0(풀커밋) 후보를
-# 뺀 2후보{0, actual}로 바꾸니 baseline Gap이 논문과 ±0.1%p로 거의 정확히 일치했다(§8.2, §11.2).
+# 2026-09-14 수정: 예전엔 "PC=RT+rate*DA는 rate=0이어도 PC=RT>0이라 commit=1.0이
+# 오라클이 될 수 없다"는 근거로 2후보{0, actual}로 줄였었다(오늘_GapRate비교.md §8.1).
+# 그런데 이 근거는 틀렸다 — rate=0이면 surplus 기울기(DA-RT)와 shortage 기울기(DA-PC=DA-RT)가
+# 정확히 같아져(꺾이는 점이 없어짐), DA>RT인 시간대(z03/블록18 테스트셋의 62.8%)에서는
+# commit=1.0이 실제 오라클이다. rate>0이어도 rate < (DA-RT)/DA인 동안은 마찬가지다.
+# 실측 결과 rate=0에서 Gap이 6.48%(2후보)->13.53%(3후보)로 +7.04%p 왜곡돼 있었다(rate>=0.5
+# 부터는 영향이 거의 0). 그래서 2.1절 표준(3후보)으로 되돌린다 — 다른 모든 방법(3/4/5/6)과
+# 같은 오라클 정의를 쓴다. 근거: temp_debug_2cand_vs_3cand_oracle_method8.py, 실험결과_이력2.md.
 def compute_gap_4term(pred_flat, penalty_rate, actual, da, rt):
-    """PC=RT+rate*DA 3항 이익함수 optimality gap 계산 (oracle: {commit=0, commit=actual} 2후보)"""
+    """PC=RT+rate*DA 3항 이익함수 optimality gap 계산 (oracle: {commit=0, commit=actual, commit=1.0} 3후보)"""
     sum_realized = 0.0
     sum_oracle = 0.0
     for i in range(len(pred_flat)):
@@ -246,7 +252,10 @@ def compute_gap_4term(pred_flat, penalty_rate, actual, da, rt):
         sum_realized += realized
         p0 = scale * rp * a  # commit = 0
         pa = scale * dp * a  # commit = actual
-        oracle = max(p0, pa)
+        s1 = max(a - 1.0, 0); y1 = max(1.0 - a, 0)
+        pc_full = rp + penalty_rate * dp
+        p1 = scale * (dp * 1.0 + rp * s1 - pc_full * y1)  # commit = 1.0 (설비최대)
+        oracle = max(p0, pa, p1)
         sum_oracle += oracle
     return 100.0 * (sum_oracle - sum_realized) / sum_oracle if sum_oracle > 1e-10 else 0.0
 

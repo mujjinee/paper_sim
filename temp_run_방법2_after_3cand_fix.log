@@ -1,0 +1,174 @@
+======================================================================
+  1. 데이터 로딩
+======================================================================
+  train: 90일(1080행), test: 30일(360행)
+
+======================================================================
+  2. AR baseline (bounded LAD, 시간대별)
+======================================================================
+  AR baseline nRMSE = 36.11%
+
+======================================================================
+  3. MLR baseline (bounded LAD, pooled)
+======================================================================
+  MLR baseline nRMSE = 24.43%
+
+======================================================================
+  4. 그리드 스윕 (rate 10개 x W1/W2 5개 = 50조합, AR+MLR)
+======================================================================
+
+  ── rate = 0.3 ──
+  1/20: AR(nRMSE=35.24%, Gap=11.44%) MLR(nRMSE=24.02%, Gap=10.04%)
+  1/10: AR(nRMSE=36.72%, Gap=11.81%) MLR(nRMSE=23.86%, Gap=9.98%)
+  1/5: AR(nRMSE=37.33%, Gap=11.72%) MLR(nRMSE=23.58%, Gap=9.91%)
+  1/1: AR(nRMSE=45.65%, Gap=11.02%) MLR(nRMSE=23.15%, Gap=9.81%)
+  1/0: AR(nRMSE=73.88%, Gap=10.95%) MLR(nRMSE=38.91%, Gap=10.06%)
+
+  ── rate = 0.4 ──
+  1/20: AR(nRMSE=35.27%, Gap=12.65%) MLR(nRMSE=23.93%, Gap=10.52%)
+  1/10: AR(nRMSE=36.94%, Gap=13.19%) MLR(nRMSE=23.71%, Gap=10.44%)
+  1/5: AR(nRMSE=37.45%, Gap=12.92%) MLR(nRMSE=23.34%, Gap=10.31%)
+  1/1: AR(nRMSE=46.70%, Gap=11.61%) MLR(nRMSE=24.16%, Gap=9.97%)
+  1/0: AR(nRMSE=69.70%, Gap=10.66%) MLR(nRMSE=48.37%, Gap=10.03%)
+
+  ── rate = 0.5 ──
+  1/20: AR(nRMSE=36.32%, Gap=14.55%) MLR(nRMSE=23.88%, Gap=11.30%)
+  1/10: AR(nRMSE=36.67%, Gap=14.58%) MLR(nRMSE=23.63%, Gap=11.16%)
+  1/5: AR(nRMSE=37.85%, Gap=14.39%) MLR(nRMSE=23.20%, Gap=10.89%)
+  1/1: AR(nRMSE=44.64%, Gap=11.79%) MLR(nRMSE=26.31%, Gap=10.15%)
+  1/0: AR(nRMSE=67.84%, Gap=10.69%) MLR(nRMSE=52.89%, Gap=10.18%)
+
+  ── rate = 0.6 ──
+  1/20: AR(nRMSE=36.44%, Gap=16.17%) MLR(nRMSE=23.86%, Gap=12.12%)
+  1/10: AR(nRMSE=36.86%, Gap=16.13%) MLR(nRMSE=23.55%, Gap=11.90%)
+  1/5: AR(nRMSE=36.71%, Gap=15.14%) MLR(nRMSE=23.11%, Gap=11.54%)
+  1/1: AR(nRMSE=48.43%, Gap=11.29%) MLR(nRMSE=28.65%, Gap=10.57%)
+  1/0: AR(nRMSE=68.75%, Gap=11.11%) MLR(nRMSE=58.33%, Gap=10.35%)
+
+  ── rate = 0.7 ──
+  1/20: AR(nRMSE=36.58%, Gap=17.65%) MLR(nRMSE=23.77%, Gap=12.88%)
+  1/10: AR(nRMSE=36.61%, Gap=17.83%) MLR(nRMSE=23.47%, Gap=12.57%)
+  1/5: AR(nRMSE=36.47%, Gap=16.21%) MLR(nRMSE=23.07%, Gap=12.12%)
+  1/1: AR(nRMSE=48.97%, Gap=11.94%) MLR(nRMSE=30.83%, Gap=10.74%)
+  1/0: AR(nRMSE=70.05%, Gap=11.18%) MLR(nRMSE=59.64%, Gap=10.43%)
+
+  ── rate = 0.8 ──
+  1/20: AR(nRMSE=36.59%, Gap=19.26%) MLR(nRMSE=23.70%, Gap=13.67%)
+  1/10: AR(nRMSE=37.15%, Gap=19.43%) MLR(nRMSE=23.31%, Gap=13.21%)
+  1/5: AR(nRMSE=37.63%, Gap=17.53%) MLR(nRMSE=23.04%, Gap=12.72%)
+  1/1: AR(nRMSE=55.54%, Gap=12.08%) MLR(nRMSE=32.27%, Gap=10.93%)
+  1/0: AR(nRMSE=72.61%, Gap=11.56%) MLR(nRMSE=63.05%, Gap=10.54%)
+
+  ── rate = 0.9 ──
+  1/20: AR(nRMSE=36.56%, Gap=20.90%) MLR(nRMSE=23.66%, Gap=14.40%)
+  1/10: AR(nRMSE=37.37%, Gap=21.09%) MLR(nRMSE=23.22%, Gap=13.80%)
+  1/5: AR(nRMSE=39.18%, Gap=18.30%) MLR(nRMSE=23.05%, Gap=13.21%)
+  1/1: AR(nRMSE=55.79%, Gap=11.83%) MLR(nRMSE=34.02%, Gap=11.08%)
+  1/0: AR(nRMSE=72.39%, Gap=11.83%) MLR(nRMSE=66.37%, Gap=10.65%)
+
+  ── rate = 1.0 ──
+  1/20: AR(nRMSE=36.58%, Gap=22.51%) MLR(nRMSE=23.61%, Gap=15.14%)
+  1/10: AR(nRMSE=36.46%, Gap=22.08%) MLR(nRMSE=23.20%, Gap=14.42%)
+  1/5: AR(nRMSE=39.26%, Gap=18.42%) MLR(nRMSE=23.07%, Gap=13.76%)
+  1/1: AR(nRMSE=55.03%, Gap=12.19%) MLR(nRMSE=35.50%, Gap=11.23%)
+  1/0: AR(nRMSE=76.74%, Gap=12.40%) MLR(nRMSE=68.33%, Gap=10.74%)
+
+  ── rate = 1.2 ──
+  1/20: AR(nRMSE=36.44%, Gap=25.46%) MLR(nRMSE=23.53%, Gap=16.55%)
+  1/10: AR(nRMSE=36.26%, Gap=23.59%) MLR(nRMSE=23.11%, Gap=15.57%)
+  1/5: AR(nRMSE=39.43%, Gap=18.81%) MLR(nRMSE=23.41%, Gap=14.38%)
+  1/1: AR(nRMSE=61.04%, Gap=12.91%) MLR(nRMSE=38.38%, Gap=11.39%)
+  1/0: AR(nRMSE=80.25%, Gap=12.70%) MLR(nRMSE=69.05%, Gap=10.82%)
+
+  ── rate = 1.5 ──
+  1/20: AR(nRMSE=36.76%, Gap=30.61%) MLR(nRMSE=23.32%, Gap=18.46%)
+  1/10: AR(nRMSE=37.43%, Gap=27.87%) MLR(nRMSE=23.06%, Gap=17.33%)
+  1/5: AR(nRMSE=43.06%, Gap=18.62%) MLR(nRMSE=24.45%, Gap=14.99%)
+  1/1: AR(nRMSE=63.41%, Gap=13.96%) MLR(nRMSE=41.96%, Gap=11.67%)
+  1/0: AR(nRMSE=85.96%, Gap=13.18%) MLR(nRMSE=73.90%, Gap=11.00%)
+
+  saved: D:\03_JiWon\JiWonProject\results\simulation_output\grid_4term_ar_mlr_z03_block18.csv
+
+======================================================================
+  5. 논문 KPI 조건 — W1=1, W2=20, penalty rate=0.5 (50%)
+======================================================================
+
+  ┌──────────────────┬──────────────┬──────────────┬──────────────┬──────────────┐
+  │     모델          │  nRMSE (%)   │  Gap (%)     │  nRMSE (%)   │  Gap (%)     │
+  │                  │  (제안모형)   │  (제안모형)   │  (baseline)  │  (baseline)  │
+  ├──────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+  │  AR (z03/블록18)  │      36.32   │      14.55   │      36.11   │      14.94   │
+  │  MLR (z03/블록18) │      23.88   │      11.30   │      24.43   │      11.34   │
+  └──────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
+
+  ※ 논문 KPI 기준값 (z03/블록18):
+      AR  baseline nRMSE=34.76%, Gap=15.04%
+      MLR baseline nRMSE=21.76%, Gap=12.59%
+
+
+  Fig.3/6 고정 rate: 0.5 (논문 KPI)
+
+======================================================================
+  6. Fig.3/6 데이터 — W1/W2 10개점 스윕 (rate=0.5)
+======================================================================
+  1/20: AR(nRMSE=36.32%, Gap=14.55%) MLR(nRMSE=23.88%, Gap=11.30%)
+  1/10: AR(nRMSE=36.67%, Gap=14.58%) MLR(nRMSE=23.63%, Gap=11.16%)
+  1/5: AR(nRMSE=37.85%, Gap=14.39%) MLR(nRMSE=23.20%, Gap=10.89%)
+  1/2: AR(nRMSE=41.16%, Gap=12.97%) MLR(nRMSE=23.21%, Gap=10.52%)
+  1/1: AR(nRMSE=44.64%, Gap=11.79%) MLR(nRMSE=26.31%, Gap=10.15%)
+  2/1: AR(nRMSE=53.22%, Gap=11.27%) MLR(nRMSE=32.34%, Gap=10.10%)
+  5/1: AR(nRMSE=61.78%, Gap=10.83%) MLR(nRMSE=39.05%, Gap=10.00%)
+  10/1: AR(nRMSE=66.71%, Gap=10.79%) MLR(nRMSE=46.04%, Gap=10.11%)
+  20/1: AR(nRMSE=67.03%, Gap=10.69%) MLR(nRMSE=49.18%, Gap=10.13%)
+  1/0: AR(nRMSE=67.84%, Gap=10.69%) MLR(nRMSE=52.89%, Gap=10.18%)
+
+======================================================================
+  7. Fig.5/8 데이터 — rate 0~100% 스윕 (W1=1, W2=1, W2_eff=W2×4 균형 보정)
+======================================================================
+  rate=0.0: AR(base=13.47%, prop=46.60%/13.53%) MLR(base=13.88%, prop=26.40%/13.70%)
+  rate=0.1: AR(base=11.84%, prop=43.42%/11.62%) MLR(base=11.49%, prop=23.53%/11.70%)
+  rate=0.2: AR(base=11.37%, prop=46.80%/11.52%) MLR(base=10.22%, prop=23.03%/10.35%)
+  rate=0.3: AR(base=11.90%, prop=45.65%/11.02%) MLR(base=9.93%, prop=23.15%/9.81%)
+  rate=0.4: AR(base=13.27%, prop=46.70%/11.61%) MLR(base=10.49%, prop=24.16%/9.97%)
+  rate=0.5: AR(base=14.94%, prop=44.64%/11.79%) MLR(base=11.34%, prop=26.31%/10.15%)
+  rate=0.6: AR(base=16.64%, prop=48.43%/11.29%) MLR(base=12.24%, prop=28.65%/10.57%)
+  rate=0.7: AR(base=18.35%, prop=48.97%/11.94%) MLR(base=13.13%, prop=30.83%/10.74%)
+  rate=0.8: AR(base=20.05%, prop=55.54%/12.08%) MLR(base=14.03%, prop=32.27%/10.93%)
+  rate=0.9: AR(base=21.76%, prop=55.79%/11.83%) MLR(base=14.92%, prop=34.02%/11.08%)
+  rate=1.0: AR(base=23.46%, prop=55.03%/12.19%) MLR(base=15.82%, prop=35.50%/11.23%)
+  saved: D:\03_JiWon\JiWonProject\results\simulation_output\fig3_ar_z03_block18.csv
+  saved: D:\03_JiWon\JiWonProject\results\simulation_output\fig5_ar_z03_block18.csv
+  saved: D:\03_JiWon\JiWonProject\results\simulation_output\fig6_mlr_z03_block18.csv
+  saved: D:\03_JiWon\JiWonProject\results\simulation_output\fig8_mlr_z03_block18.csv
+
+======================================================================
+  8. Fig.3 plotting (AR, W1/W2 스윕, dual y축)
+======================================================================
+  saved: D:\03_JiWon\JiWonProject\results\방법2_fig3_ar_z03_block18.png
+
+======================================================================
+  9. Fig.5 plotting (AR, rate 스윕, 2분할)
+======================================================================
+  saved: D:\03_JiWon\JiWonProject\results\방법2_fig5_ar_z03_block18.png
+
+======================================================================
+  10. Fig.6 plotting (MLR, W1/W2 스윕, dual y축)
+======================================================================
+  saved: D:\03_JiWon\JiWonProject\results\방법2_fig6_mlr_z03_block18.png
+
+======================================================================
+  11. Fig.8 plotting (MLR, rate 스윕, 2분할)
+======================================================================
+  saved: D:\03_JiWon\JiWonProject\results\방법2_fig8_mlr_z03_block18.png
+
+======================================================================
+  완료 — AR+MLR PC=RT+rate×DA 통합 실험 (z03/블록18)
+======================================================================
+
+  생성 파일:
+    Fig.3 (AR W1/W2):   D:\03_JiWon\JiWonProject\results\방법2_fig3_ar_z03_block18.png
+    Fig.5 (AR rate):    D:\03_JiWon\JiWonProject\results\방법2_fig5_ar_z03_block18.png
+    Fig.6 (MLR W1/W2):  D:\03_JiWon\JiWonProject\results\방법2_fig6_mlr_z03_block18.png
+    Fig.8 (MLR rate):   D:\03_JiWon\JiWonProject\results\방법2_fig8_mlr_z03_block18.png
+    Grid CSV:           D:\03_JiWon\JiWonProject\results\simulation_output\grid_4term_ar_mlr_z03_block18.csv
+
